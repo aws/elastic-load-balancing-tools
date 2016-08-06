@@ -4,13 +4,13 @@
 Customers can utilize this tool to copy the configuration of their existing Classic load balancer to create a new Application load balancer with the same configuration. Customers can also choose to register their existing backend EC2 instances with the new Application load balancer.
  
 ### Usage:
-'''
+```
 classic_elb_to_application_load_balancer_copy.py
 --name <value>
 --region <value>
 [--debug <value>]
 [--register-targets]
-'''
+```
  
 ### Unsupported Configurations:
 1. Classic load balancer has TCP or SSL listeners
