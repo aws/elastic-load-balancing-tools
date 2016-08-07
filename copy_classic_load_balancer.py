@@ -22,7 +22,7 @@ import json
 import sys
 import botocore
 
-# Classic load balancer to Application load balancer version 1.00 2016
+# Classic load balancer to Application load balancer copy utility version 1.00 2016
 # Authors: Long Ren,Dan Lindow,Max Clements,Tipu Qureshi
 
 # This script uses the configuration of the specified Classic load balancer
@@ -39,11 +39,12 @@ import botocore
 #       (http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html)
 
 # Usage:
-# create_application_load_balancer.py
+# copy_classic_load_balancer.py
 # --name <value>
 # --region <value>
 # [--debug <value>]
 # [--register-targets]
+# [--dry-run]
 
 #raw_input is now called input in python3, this allows backward compatability
 try:
@@ -398,7 +399,7 @@ def main():
     parser.add_argument("--debug", help="debug mode", action='store_true')
     parser.add_argument("--register-targets", help="Register the backend instances of the Classic load balancer with the Application load balancer",
                         action='store_true')
-    parser.add_argument("--dry-run", help="Validate that the current load balancer configuration is compatible with Application Load Balancers, , but do not perform create operations",
+    parser.add_argument("--dry-run", help="Validate that the current load balancer configuration is compatible with Application Load Balancers, but do not perform create operations",
                         action='store_true')
     #if no options, print help
     if len(sys.argv[1:])==0:

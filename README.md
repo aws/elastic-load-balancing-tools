@@ -5,11 +5,27 @@ Customers can utilize this tool to copy the configuration of their existing Clas
  
 ### Usage:
 ```
-classic_elb_to_application_load_balancer_copy.py
+copy_classic_load_balancer.py
 --name <value>
 --region <value>
 [--debug <value>]
 [--register-targets]
+[--dry-run]
+```
+
+Example 1: Test whether the load balancer configuration is supported
+```
+copy_classic_load_balancer.py --name my-load-balancer –region us-west-2 --dry-run
+```
+
+Example 2: Create an Application load balancer based on the specified Classic load balancer but do not register the instances as targets
+```
+copy_classic_load_balancer.py --name my-load-balancer –region us-west-2
+```
+
+Example 3: Create an Application load balancer based on the specified Classic load balancer and register the instances as targets
+```
+copy_classic_load_balancer.py --name my-load-balancer –region us-west-2 --register-targets
 ```
  
 ### Unsupported Configurations:
@@ -30,6 +46,6 @@ classic_elb_to_application_load_balancer_copy.py
 For more information please see the Application load balancer Documentation: https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html
  
 ### License
-The classic_elb_to_application_load_balancer_copy utility is licensed under the Apache 2.0 License.
+The Classic load balancer to Application load balancer copy utility is licensed under the Apache 2.0 License.
 
 
