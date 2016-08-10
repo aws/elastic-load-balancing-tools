@@ -22,7 +22,7 @@ import json
 import sys
 import botocore
 
-# Classic load balancer to Application load balancer copy utility version 1.00 2016
+# Classic load balancer to Application load balancer copy utility version 1.0.0 2016
 # Authors: Long Ren,Dan Lindow,Max Clements,Tipu Qureshi
 
 # This script uses the configuration of the specified Classic load balancer
@@ -45,6 +45,8 @@ import botocore
 # [--debug <value>]
 # [--register-targets]
 # [--dry-run]
+
+VERSION = '1.0.0'
 
 #raw_input is now called input in python3, this allows backward compatability
 try:
@@ -419,7 +421,9 @@ def main():
 
     # build a global boto client
     global client
-    client = boto3.client('elbv2', region_name=region)
+    session = botocore.session.get_session()
+    session.user_agent_name = 'CopyClassicLoadBalancer/'+VERSION
+    client = session.create_client('elbv2', region_name=region)
 
     # Obtain ELB data
     elb_data = get_elb_data(load_balancer_name, region)
@@ -460,3 +464,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
