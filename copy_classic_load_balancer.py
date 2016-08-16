@@ -23,7 +23,7 @@ import sys
 import botocore
 
 # Classic load balancer to Application load balancer copy utility version 1.0.0 2016
-# Authors: Long Ren,Dan Lindow,Max Clements,Tipu Qureshi
+# Authors: Long Ren,Dan Lindow,Max Clements, Tipu Qureshi
 
 # This script uses the configuration of the specified Classic load balancer
 # to create an Application load balancer in a "best effort" manner.
@@ -394,7 +394,7 @@ def main():
 
     :rtype: int
     """
-    parser = argparse.ArgumentParser(description='Create an Application load balancer from a Classic load balancer', usage='%(prog)s --elb-name <elb name> --region')
+    parser = argparse.ArgumentParser(description='Create an Application load balancer from a Classic load balancer', usage='%(prog)s --name <elb name> --region')
     parser.add_argument("--name", help="The name of the Classic load balancer", required=True)
     parser.add_argument("--region", help="The region of the Classic load balancer (will also be used for the Application load balancer)",
                         required=True)
