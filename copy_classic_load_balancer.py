@@ -241,7 +241,7 @@ def get_alb_data(elb_data, region, load_balancer_name):
             'HealthyThreshold']
         target_group['UnhealthyThresholdCount'] = elb_data['LoadBalancerDescriptions'][0]['HealthCheck'][
             'UnhealthyThreshold']
-        target_group['HealthCheckPath'] = '/' + hc_target.split('/')[1]
+        target_group['HealthCheckPath'] = '/' + hc_target.split('/', 1)[1]
         target_group['HealthCheckPort'] = hc_target[hc_target.index(':') + 1:hc_target.index('/')]
 
         target_group['HealthCheckProtocol'] = hc_target.split(':')[0]
@@ -464,4 +464,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
