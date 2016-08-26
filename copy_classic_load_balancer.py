@@ -97,6 +97,10 @@ def get_elb_data(elb_name, region):
 
     describe_tags = elbc.describe_tags(
         LoadBalancerNames=[elb_name])
+    #remove aws: tags as it is reserved namespace
+    describe_tags['TagDescriptions'][0]['Tags'] = [tag for tag in \
+        describe_tags['TagDescriptions'][0]['Tags'] \
+        if not tag['Key'].startswith('aws:')]
 
     # Render a dictionary that contains load balancer attributes
     elb_data = {}
@@ -464,4 +468,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
