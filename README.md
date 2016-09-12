@@ -33,7 +33,7 @@ copy_classic_load_balancer.py --name my-load-balancer -–region us-west-2 --reg
 2. Classic load balancer is in EC2-Classic
 3. Classic load balancer has only one enabled subnet
 4. Classic load balancer has TCP or SSL health check configured
-5. Classic load balancer has an unsupported policy (please note that this utility does not currently support sticky sessions)
+5. Classic load balancer has an unsupported policy (please note that this utility does not currently support Application-Controlled Session Stickiness)
 6. Classic load balancer has more than 50 unique backend ports
 7. Classic load balancer has more than 10 listeners
  
