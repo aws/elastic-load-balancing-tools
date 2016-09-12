@@ -41,7 +41,10 @@ copy_classic_load_balancer.py --name my-load-balancer -–region us-west-2 --reg
 1. If you are utilizing Auto Scaling groups (ASG) you will need to register the ASG with the respective target groups.
 2. All HTTPS listeners created will be utilizing the AWS pre-defined cipher security policy. Please modify the HTTPS listener configurations if you need to use custom policies.
 3. If you are utilizing Amazon EC2 Container Service (ECS) you will need to associate your ECS service with the new Application load balancer.
-4. We recommend testing your application on the Application load balancer before migrating your traffic using DNS.
+4. We recommend testing your application on the Application load balancer before migrating your traffic using DNS. Amazon Route 53 weighted resource record sets let you associate multiple resources with a single DNS name. Using these weighted resource record sets, you can gradually shift your traffic from your Classic load balancer to your new Application load balancer after testing is complete. For more information about weighted routing please see:
+http://docs.aws.amazon.com/Route53/latest/DeveloperGuide/routing-policy.html#routing-policy-weighted
+For Instructions on creating Resource Record Sets by Using the Amazon Route 53 Console are, please see:
+http://docs.aws.amazon.com/Route53/latest/DeveloperGuide/resource-record-sets-editing.html
  
 For more information please see the Application load balancer Documentation: https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html
  
