@@ -222,10 +222,12 @@ Your Application Load Balancer will be created with 7-day expiration period Dura
                 error = True
     # 3. Check for AWS reserved tag
     if len(elb_data['TagDescriptions']) > 0:
-        for tag in elb_data['TagDescriptions'][0]['Tags']:
+        #this creates a copy of the list and allows us to iterate over the copy so we cand modify the original
+        for tag in elb_data['TagDescriptions'][0]['Tags'][:]:
             if tag['Key'].startswith('aws:'):
                 print("AWS reserved tag is in use. The aws: prefix in your tag names or \
 values because it is reserved for AWS use -- http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-restrictions")
+                print('Tag key: {}'.format(tag['Key']))
                 answer = input(
                     "Do you want to proceed without AWS reserved tag? y/n ")
                 if answer.lower() == 'y':
@@ -587,4 +589,3 @@ with Application Load Balancers, but do not perform create operations",
 
 if __name__ == '__main__':
     main()
-
