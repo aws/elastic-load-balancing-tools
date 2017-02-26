@@ -174,7 +174,7 @@ def passed_hardfailure_detector(elb_data):
                 error = True
 
         # 8. Check for backend authentication on HTTPS backend ports
-    if elb_data['LoadBalancerDescriptions'][0]['Policies']['OtherPolicies'] > 0:
+    if len(elb_data['LoadBalancerDescriptions'][0]['Policies']['OtherPolicies']) > 0:
         for policy in elb_data['LoadBalancerDescriptions'][0]['Policies']['OtherPolicies']:
             if 'BackendAuthenticationPolicy' in policy:
                 print("Error: The Classic load balancer has Backend HTTPS authentication.\
