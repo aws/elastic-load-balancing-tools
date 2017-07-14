@@ -72,10 +72,11 @@ def alb_exist(load_balancer_name, region):
 # Describe the load balancer and retrieve attributes
 
 
-def get_elb_data(elb_name, region):
+def get_elb_data(elb_name, region, profile):
     if debug:
         print("Getting existing Classic ELB data")
-    elbc = boto3.client('elb', region_name=region)
+    session = boto3.Session(profile_name=profile)
+    elbc = session.client('elb', region_name=region)
     # Describes the specified the load balancer.
     try:
         describe_load_balancers = elbc.describe_load_balancers(
@@ -519,6 +520,8 @@ def main():
         description='Create an Application Load Balancer from a Classic load balancer', usage='%(prog)s --name <elb name> --region')
     parser.add_argument(
         "--name", help="The name of the Classic load balancer", required=True)
+    parser.add_argument(
+        "--profile", help="The credentials profile name to use", required=False, default=None)
     parser.add_argument("--region", help="The region of the Classic load balancer (will also be used for the Application Load Balancer)",
                         required=True)
     parser.add_argument("--debug", help="debug mode", action='store_true')
@@ -545,10 +548,11 @@ with Application Load Balancers, but do not perform create operations",
     global client
     session = botocore.session.get_session()
     session.user_agent_name = 'CopyClassicLoadBalancer/' + VERSION
+    session.set_config_variable('profile', args.profile)
     client = session.create_client('elbv2', region_name=region)
 
     # Obtain ELB data
-    elb_data = get_elb_data(load_balancer_name, region)
+    elb_data = get_elb_data(load_balancer_name, region, args.profile)
     # validate that an existing ALB with same name does not exist
     if alb_exist(load_balancer_name, region):
         print('An Application Load Balancer currently exists with the name {} in {}'.format(

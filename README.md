@@ -8,6 +8,7 @@ Customers can utilize this tool to copy the configuration of their existing Clas
 copy_classic_load_balancer.py
 --name <value>
 --region <value>
+[--profile <value>]
 [--debug <value>]
 [--register-targets]
 [--dry-run]
