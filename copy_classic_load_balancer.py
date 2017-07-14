@@ -263,41 +263,40 @@ def get_alb_data(elb_data, region, load_balancer_name):
     # this is used for building the listeners specs
     for elb_listener in elb_data['LoadBalancerDescriptions'][0]['ListenerDescriptions']:
         # If there is a LBCookieStickinessPolicy, append TG attriubtes
-        if len(elb_listener['PolicyNames']) > 0:
-            if 'LBCookieStickinessPolicy' in elb_listener['PolicyNames'][0]:
-                for policy in elb_data['PolicyDescriptions']:
-                    if elb_listener['PolicyNames'][0] == policy['PolicyName']:
-                        listener = {'Protocol': elb_listener['Listener']['Protocol'],
-                                    'Port': elb_listener['Listener']['LoadBalancerPort'],
-                                    'TargetGroup_Port': elb_listener['Listener']['InstancePort'],
-                                    'TargetGroup_Protocol': elb_listener['Listener']['InstanceProtocol']}
-                        TargetGroup_Attribute = {
-                            'dereg_timeout_seconds_delay': str(elb_data['LoadBalancerAttributes']['ConnectionDraining']['Timeout']),
-                            'stickiness.enabled': 'true',
-                            'stickiness.type': 'lb_cookie',
-                            'stickiness_policy': policy['PolicyName'].split('-')[3],
-                            'stickiness.lb_cookie.duration_seconds': policy['PolicyAttributeDescriptions'][0]['AttributeValue'],
-                            'TargetGroup_Port': elb_listener['Listener']['InstancePort']
-                        }
-                        if listener['Protocol'] == "HTTPS":
-                            listener['Certificates'] = [
-                                {'CertificateArn': elb_listener['Listener']['SSLCertificateId']}]
-            else:
-                listener = {'Protocol': elb_listener['Listener']['Protocol'],
-                            'Port': elb_listener['Listener']['LoadBalancerPort'],
-                            'TargetGroup_Port': elb_listener['Listener']['InstancePort'],
-                            'TargetGroup_Protocol': elb_listener['Listener']['InstanceProtocol']}
-                TargetGroup_Attribute = {
-                    'dereg_timeout_seconds_delay': str(elb_data['LoadBalancerAttributes']['ConnectionDraining']['Timeout']),
-                    'TargetGroup_Port': elb_listener['Listener']['InstancePort']
-                }
-                if listener['Protocol'] == "HTTPS":
-                    listener['Certificates'] = [
-                        {'CertificateArn': elb_listener['Listener']['SSLCertificateId']}]
-            # TGs is not per unique backend port as two TGs might have two
-            # different stickiness policy
-            alb_data['listeners'].append(listener)
-            alb_data['target_group_attributes'].append(TargetGroup_Attribute)
+        if len(elb_listener['PolicyNames']) > 0 and 'LBCookieStickinessPolicy' in elb_listener['PolicyNames'][0]:
+            for policy in elb_data['PolicyDescriptions']:
+                if elb_listener['PolicyNames'][0] == policy['PolicyName']:
+                    listener = {'Protocol': elb_listener['Listener']['Protocol'],
+                                'Port': elb_listener['Listener']['LoadBalancerPort'],
+                                'TargetGroup_Port': elb_listener['Listener']['InstancePort'],
+                                'TargetGroup_Protocol': elb_listener['Listener']['InstanceProtocol']}
+                    TargetGroup_Attribute = {
+                        'dereg_timeout_seconds_delay': str(elb_data['LoadBalancerAttributes']['ConnectionDraining']['Timeout']),
+                        'stickiness.enabled': 'true',
+                        'stickiness.type': 'lb_cookie',
+                        'stickiness_policy': policy['PolicyName'].split('-')[3],
+                        'stickiness.lb_cookie.duration_seconds': policy['PolicyAttributeDescriptions'][0]['AttributeValue'],
+                        'TargetGroup_Port': elb_listener['Listener']['InstancePort']
+                    }
+                    if listener['Protocol'] == "HTTPS":
+                        listener['Certificates'] = [
+                            {'CertificateArn': elb_listener['Listener']['SSLCertificateId']}]
+        else:
+            listener = {'Protocol': elb_listener['Listener']['Protocol'],
+                        'Port': elb_listener['Listener']['LoadBalancerPort'],
+                        'TargetGroup_Port': elb_listener['Listener']['InstancePort'],
+                        'TargetGroup_Protocol': elb_listener['Listener']['InstanceProtocol']}
+            TargetGroup_Attribute = {
+                'dereg_timeout_seconds_delay': str(elb_data['LoadBalancerAttributes']['ConnectionDraining']['Timeout']),
+                'TargetGroup_Port': elb_listener['Listener']['InstancePort']
+            }
+            if listener['Protocol'] == "HTTPS":
+                listener['Certificates'] = [
+                    {'CertificateArn': elb_listener['Listener']['SSLCertificateId']}]
+        # TGs is not per unique backend port as two TGs might have two
+        # different stickiness policy
+        alb_data['listeners'].append(listener)
+        alb_data['target_group_attributes'].append(TargetGroup_Attribute)
     # this is used for building the target groups
     '''
     # We need to create more target group if ELB front port has Duration-Based sticky policy
