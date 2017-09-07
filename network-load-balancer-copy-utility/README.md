@@ -15,17 +15,17 @@ copy_classic_load_balancer.py
 
 Example 1: Test whether the Load Balancer configuration is supported
 ```
-copy_classic_load_balancer.py --name my-load-balancer -- region us-west-2 --dry-run
+copy_classic_load_balancer.py --name my-load-balancer --region us-west-2 --dry-run
 ```
 
 Example 2: Create an Network Load Balancer based on the specified Classic Load Balancer but do not register the instances as targets
 ```
-copy_classic_load_balancer.py --name my-load-balancer -- region us-west-2
+copy_classic_load_balancer.py --name my-load-balancer --region us-west-2
 ```
 
 Example 3: Create an Network Load Balancer based on the specified Classic Load Balancer and register the instances as targets
 ```
-copy_classic_load_balancer.py --name my-load-balancer -- region us-west-2 --register-targets
+copy_classic_load_balancer.py --name my-load-balancer --region us-west-2 --register-targets
 ```
  
 ### Unsupported Configurations:
