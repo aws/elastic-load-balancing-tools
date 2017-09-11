@@ -511,7 +511,7 @@ def main():
     global client
     session = botocore.session.get_session()
     session.user_agent_name = 'CopyClassicToNetwork/' + VERSION
-    client = session.create_client('nlb', region_name=region)
+    client = session.create_client('elbv2', region_name=region)
     ec2_client = session.create_client('ec2', region_name=region)
 
     # If input gets allocation ID. Verify allocation ID
