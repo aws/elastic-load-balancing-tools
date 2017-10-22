@@ -2,7 +2,9 @@
  
 ### Overview:
 Customers can utilize this tool to copy the configuration of their existing Classic Load Balancer to create a new Network Load Balancer with the same configuration. Customers can also choose to register their existing backend EC2 instances with the new Network Load Balancer.
- 
+
+Note: Please make sure that your botocore version number is higher than 1.7.6.
+
 ### Usage:
 ```
 copy_classic_load_balancer.py
