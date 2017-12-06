@@ -1,0 +1,4 @@
+int code = 0x2 << 4 | 0x1;
+System.out.println(code);
+System.out.println((code >> 4) & 0xF); //first
+System.out.println(code & 0xF); //second
