@@ -4,5 +4,5 @@ Elastic Load Balancing automatically distributes incoming application traffic ac
 
 [Classic load balancer to Application load balancer copy utility](application-load-balancer-copy-utility/) <br />
 [Classic load balancer to Network load balancer copy utility](network-load-balancer-copy-utility/) <br /> 
-[Classic Load Balancer Console Link utility](proprot/) <br /> 
-[Proxy Protocol v2 implementation Java library](classic-load-balancer-consolelink-utility/) <br /> 
+[Classic Load Balancer Console Link utility](classic-load-balancer-consolelink-utility/) <br /> 
+[Proxy Protocol v2 implementation Java library](proprot/) <br /> 
