@@ -46,7 +46,7 @@ TlvRaw and TlvSubTypeRaw or define your own.
 
 Choose your installation method - Maven or Jar file.
 
-#### via Maven (Not yet available)
+#### via Maven
 Add ProProt as a dependency on your pom.xml:
 ```xml
 <dependency>
