@@ -282,22 +282,22 @@ def get_alb_data(elb_data, region, load_balancer_name):
                         if listener['Protocol'] == "HTTPS":
                             listener['Certificates'] = [
                                 {'CertificateArn': elb_listener['Listener']['SSLCertificateId']}]
-            else:
-                listener = {'Protocol': elb_listener['Listener']['Protocol'],
-                            'Port': elb_listener['Listener']['LoadBalancerPort'],
-                            'TargetGroup_Port': elb_listener['Listener']['InstancePort'],
-                            'TargetGroup_Protocol': elb_listener['Listener']['InstanceProtocol']}
-                TargetGroup_Attribute = {
-                    'dereg_timeout_seconds_delay': str(elb_data['LoadBalancerAttributes']['ConnectionDraining']['Timeout']),
-                    'TargetGroup_Port': elb_listener['Listener']['InstancePort']
-                }
-                if listener['Protocol'] == "HTTPS":
-                    listener['Certificates'] = [
-                        {'CertificateArn': elb_listener['Listener']['SSLCertificateId']}]
-            # TGs is not per unique backend port as two TGs might have two
-            # different stickiness policy
-            alb_data['listeners'].append(listener)
-            alb_data['target_group_attributes'].append(TargetGroup_Attribute)
+        else:
+            listener = {'Protocol': elb_listener['Listener']['Protocol'],
+                        'Port': elb_listener['Listener']['LoadBalancerPort'],
+                        'TargetGroup_Port': elb_listener['Listener']['InstancePort'],
+                        'TargetGroup_Protocol': elb_listener['Listener']['InstanceProtocol']}
+            TargetGroup_Attribute = {
+                'dereg_timeout_seconds_delay': str(elb_data['LoadBalancerAttributes']['ConnectionDraining']['Timeout']),
+                'TargetGroup_Port': elb_listener['Listener']['InstancePort']
+            }
+            if listener['Protocol'] == "HTTPS":
+                listener['Certificates'] = [
+                    {'CertificateArn': elb_listener['Listener']['SSLCertificateId']}]
+        # TGs is not per unique backend port as two TGs might have two
+        # different stickiness policy
+        alb_data['listeners'].append(listener)
+        alb_data['target_group_attributes'].append(TargetGroup_Attribute)
     # this is used for building the target groups
     '''
     # We need to create more target group if ELB front port has Duration-Based sticky policy
