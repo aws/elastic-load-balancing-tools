@@ -2,7 +2,11 @@
 
 ### Overview:
 This utility helps create a CSV spreadsheet or a HTML file of Classic Load Balancers' AWS Console URL link along with other attributes -- 'Name', 'DNSName', 'Scheme', 'HostedZoneID', 'CreatedTime', 'VPCId', 'AvailabilityZones', 'EC2Platform', 'Subnets' and 'SecurityGroup'.
+
+It enable you to search and manage your Classic Load Balancers easily without dealing with pagination through API call or going over page by page through AWS console.
+
 If you have a big number of Classic Load Balancers, this tool enables you to search and manage your Classic Load Balancers easily without dealing with pagination through API or going over page by page through AWS console.
+
 
 ### Usage:
 ```
