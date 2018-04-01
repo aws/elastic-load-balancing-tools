@@ -14,17 +14,18 @@
 # limitations under the License.
 
 # Import the SDK and required libraries
-import boto3
 import logging
 import argparse
 from pprint import pprint
 import json
 import sys
+from random import choice
+from string import ascii_uppercase
+import boto3
 import botocore
 
-
-# Classic load balancer to Application Load Balancer copy utility
-# version 1.1.0 2016
+# Classic load balancer (CLB) to Application Load Balancer(ALB) copy utility
+# version 1.2.0 2018
 # Authors: Long Ren, Dan Lindow, Max Clements, Tipu Qureshi
 
 # This script uses the configuration of the specified Classic load balancer
@@ -60,7 +61,7 @@ except NameError:
 
 def alb_exist(load_balancer_name, region):
     if debug:
-        print('checking if ALB exists')
+        print('checking if A exists')
     try:
         response = client.describe_load_balancers(Names=[load_balancer_name])
     except botocore.exceptions.ClientError as e:
@@ -159,19 +160,23 @@ def passed_hardfailure_detector(elb_data):
             if listener['Listener']['InstancePort'] not in backend_ports:
                 backend_ports.append(listener['Listener']['InstancePort'])
         if len(backend_ports) >= 50:
-            print("Error: The number of unique backend ports exceeds 50. The default limit for target groups is 50.")
+            print("Error: The number of unique backend "
+                  "ports exceeds 50. The default limit for target groups is 50.")
             error = True
 
         # 6 Verify that the number of listeners is less than the default
     if len(elb_data['LoadBalancerDescriptions'][0]['ListenerDescriptions']) >= 10:
-        print("Error: The number of listeners exceeds the default limit for an Application Load Balancer.")
+        print("Error: The number of listeners exceeds "
+              "the default limit for an Application Load Balancer.")
 
         # 7. If Application-Controlled sticky policies are present
     for elb_listener in elb_data['LoadBalancerDescriptions'][0]['ListenerDescriptions']:
         if len(elb_listener['PolicyNames']) > 0:
             if 'AppCookieStickinessPolicy' in elb_listener['PolicyNames'][0]:
-                print("Error: The Classic load balancer has Application-Controlled stickiness policy.\
- Application-Controlled stickiness policy is not supported on Application Load Balancer.")
+                print("Error: The Classic load balancer "
+                      "has Application-Controlled stickiness policy."
+                      "Application-Controlled stickiness policy is not supported "
+                      "on Application Load Balancer.")
                 error = True
 
         # 8. Check for backend authentication on HTTPS backend ports
@@ -201,12 +206,14 @@ def passed_softfailure_detector(elb_data):
                 for policy in elb_data['PolicyDescriptions']:
                     if elb_listener['PolicyNames'][0] in policy.values():
                         # Check if the expiration period  is larger than 7 days
-                        if (int(policy['PolicyAttributeDescriptions'][0]['AttributeValue']) > 604800):
+                        if int(policy['PolicyAttributeDescriptions'][0]['AttributeValue']) > 604800:
                             # Overide the expiration to 7days
-                            policy['PolicyAttributeDescriptions'][
-                                0]['AttributeValue'] = '604800'
-                            print("The maximum expiration period of Duration-Based stickiness policy that Application Load Balancer supports is 7 days.\
-Your Application Load Balancer will be created with 7-day expiration period Duration-Based stickiness policy.")
+                            policy['PolicyAttributeDescriptions'][0]['AttributeValue'] = '604800'
+                            print("The maximum expiration period of "
+                                  "Duration-Based stickiness policy that Application "
+                                  "Load Balancer supports is 7 days."
+                                  "Your Application Load Balancer will be created with "
+                                  "7-day expiration period Duration-Based stickiness policy.")
     # 2. If unsupported policy attribute is detected we prompt user if we want
     # to continue.
     supported_attributes = [
@@ -214,7 +221,8 @@ Your Application Load Balancer will be created with 7-day expiration period Dura
     for key in elb_data['LoadBalancerAttributes']:
         if key not in supported_attributes:
             answer = input(
-                '{} is not supported for an Application Load Balancer. Continue anyway? (y/n)'.format(key))
+                "{} is not supported for an Application Load Balancer. "
+                "Continue anyway? (y/n)".format(key))
             if answer.lower() == 'y':
                 pass
             else:
@@ -223,11 +231,14 @@ Your Application Load Balancer will be created with 7-day expiration period Dura
                 error = True
     # 3. Check for AWS reserved tag
     if len(elb_data['TagDescriptions']) > 0:
-        #this creates a copy of the list and allows us to iterate over the copy so we cand modify the original
+        #this creates a copy of the list and
+        # allows us to iterate over the copy so we cand modify the original
         for tag in elb_data['TagDescriptions'][0]['Tags'][:]:
             if tag['Key'].startswith('aws:'):
-                print("AWS reserved tag is in use. The aws: prefix in your tag names or \
-values because it is reserved for AWS use -- http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-restrictions")
+                print("AWS reserved tag is in use. The aws: prefix in your tag names or "
+                      "values because it is reserved for AWS use -- "
+                      "http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/"
+                      "Using_Tags.html#tag-restrictions")
                 print('Tag key: {}'.format(tag['Key']))
                 answer = input(
                     "Do you want to proceed without AWS reserved tag? y/n ")
@@ -236,7 +247,8 @@ values because it is reserved for AWS use -- http://docs.aws.amazon.com/AWSEC2/l
                     pass
                 else:
                     print(
-                        "We will not clone the ELB to an Application Load Balancer. stopping script.")
+                        "We will not clone the ELB to an "
+                        "Application Load Balancer. stopping script.")
                     error = True
     if error:
         return False
@@ -262,41 +274,41 @@ def get_alb_data(elb_data, region, load_balancer_name):
 
     # this is used for building the listeners specs
     for elb_listener in elb_data['LoadBalancerDescriptions'][0]['ListenerDescriptions']:
-        # If there is a LBCookieStickinessPolicy, append TG attriubtes
-        if len(elb_listener['PolicyNames']) > 0:
-            if 'LBCookieStickinessPolicy' in elb_listener['PolicyNames'][0]:
-                for policy in elb_data['PolicyDescriptions']:
-                    if elb_listener['PolicyNames'][0] == policy['PolicyName']:
-                        listener = {'Protocol': elb_listener['Listener']['Protocol'],
-                                    'Port': elb_listener['Listener']['LoadBalancerPort'],
-                                    'TargetGroup_Port': elb_listener['Listener']['InstancePort'],
-                                    'TargetGroup_Protocol': elb_listener['Listener']['InstanceProtocol']}
-                        TargetGroup_Attribute = {
-                            'dereg_timeout_seconds_delay': str(elb_data['LoadBalancerAttributes']['ConnectionDraining']['Timeout']),
-                            'stickiness.enabled': 'true',
-                            'stickiness.type': 'lb_cookie',
-                            'stickiness_policy': policy['PolicyName'].split('-')[3],
-                            'stickiness.lb_cookie.duration_seconds': policy['PolicyAttributeDescriptions'][0]['AttributeValue'],
-                            'TargetGroup_Port': elb_listener['Listener']['InstancePort']
-                        }
-                        if listener['Protocol'] == "HTTPS":
-                            listener['Certificates'] = [
-                                {'CertificateArn': elb_listener['Listener']['SSLCertificateId']}]
-        else:
-            listener = {'Protocol': elb_listener['Listener']['Protocol'],
+        alb_listener = {'Protocol': elb_listener['Listener']['Protocol'],
                         'Port': elb_listener['Listener']['LoadBalancerPort'],
                         'TargetGroup_Port': elb_listener['Listener']['InstancePort'],
                         'TargetGroup_Protocol': elb_listener['Listener']['InstanceProtocol']}
-            TargetGroup_Attribute = {
-                'dereg_timeout_seconds_delay': str(elb_data['LoadBalancerAttributes']['ConnectionDraining']['Timeout']),
-                'TargetGroup_Port': elb_listener['Listener']['InstancePort']
-            }
-            if listener['Protocol'] == "HTTPS":
-                listener['Certificates'] = [
-                    {'CertificateArn': elb_listener['Listener']['SSLCertificateId']}]
+        TargetGroup_Attribute = {
+            'dereg_timeout_seconds_delay': str(
+                elb_data['LoadBalancerAttributes']['ConnectionDraining']['Timeout']),
+            'TargetGroup_Port': elb_listener['Listener']['InstancePort'],
+        }
+        if alb_listener['Protocol'] == "HTTPS":
+            alb_listener['Certificates'] = [
+                {'CertificateArn': elb_listener['Listener']['SSLCertificateId']}]
+        # check if Classic Load Balancer has any listener policy
+        if len(elb_listener['PolicyNames']) > 0:
+            for listener_policy in elb_listener['PolicyNames']:
+                # If there is a LBCookieStickinessPolicy, append TG attriubtes
+                if 'LBCookieStickinessPolicy' in listener_policy:
+                    for policy in elb_data['PolicyDescriptions']:
+                        if listener_policy == policy['PolicyName']:
+                            TargetGroup_Attribute['stickiness.enabled'] = 'true'
+                            TargetGroup_Attribute['stickiness.type'] = 'lb_cookie'
+                            TargetGroup_Attribute['stickiness_policy'] = policy['PolicyName'].split('-')[3]
+                            TargetGroup_Attribute['stickiness.lb_cookie.duration_seconds'] = \
+                                policy['PolicyAttributeDescriptions'][0]['AttributeValue']
+                # If there is a SSLNegotiationPolicy, set Application Load Balancer listener policy
+                if 'SSLNegotiationPolicy' in listener_policy:
+                    for policy in elb_data['PolicyDescriptions']:
+                        if policy['PolicyName'] == listener_policy:
+                            for policy_attribute_description in policy['PolicyAttributeDescriptions']:
+                                if 'Reference-Security-Policy'in policy_attribute_description['AttributeName']:
+                                    alb_listener['SslPolicy']=policy_attribute_description['AttributeValue']
+
         # TGs is not per unique backend port as two TGs might have two
         # different stickiness policy
-        alb_data['listeners'].append(listener)
+        alb_data['listeners'].append(alb_listener)
         alb_data['target_group_attributes'].append(TargetGroup_Attribute)
     # this is used for building the target groups
     '''
@@ -307,43 +319,42 @@ def get_alb_data(elb_data, region, load_balancer_name):
     hc_target = elb_data['LoadBalancerDescriptions'][
         0]['HealthCheck']['Target']
     # Append unique stickiness policy name to Target Group Name
+    alb_target_group_attributes_list = list(alb_data['target_group_attributes'])
     for listener in alb_data['listeners']:
-        for target_group_attribute in alb_data['target_group_attributes']:
-            target_group = {'HealthCheckTimeoutSeconds': elb_data[
-                'LoadBalancerDescriptions'][0]['HealthCheck']['Timeout']}
-            # We only offer 15 seconds minimum health check interval
-            if elb_data['LoadBalancerDescriptions'][0]['HealthCheck']['Interval'] < 15:
-                print(
-                    "HealthCheck Interval is less than 15 seconds! Setting it to 15 seconds")
-                target_group['HealthCheckIntervalSeconds'] = 15
-            else:
-                target_group['HealthCheckIntervalSeconds'] = elb_data['LoadBalancerDescriptions'][0]['HealthCheck'][
-                    'Interval']
-            target_group['HealthyThresholdCount'] = elb_data['LoadBalancerDescriptions'][0]['HealthCheck'][
-                'HealthyThreshold']
-            target_group['UnhealthyThresholdCount'] = elb_data['LoadBalancerDescriptions'][0]['HealthCheck'][
-                'UnhealthyThreshold']
-            target_group['HealthCheckPath'] = '/' + hc_target.split('/', 1)[1]
-            target_group['HealthCheckPort'] = hc_target[
-                hc_target.index(':') + 1: hc_target.index('/')]
-            target_group['HealthCheckProtocol'] = hc_target.split(':')[0]
-            target_group['VpcId'] = elb_data[
-                'LoadBalancerDescriptions'][0]['VPCId']
+        target_group = {'HealthCheckTimeoutSeconds': elb_data[
+            'LoadBalancerDescriptions'][0]['HealthCheck']['Timeout']}
+        # We only offer 15 seconds minimum health check interval
+        if elb_data['LoadBalancerDescriptions'][0]['HealthCheck']['Interval'] < 15:
+            print(
+                "HealthCheck Interval is less than 15 seconds! Setting it to 15 seconds")
+            target_group['HealthCheckIntervalSeconds'] = 15
+        else:
+            target_group['HealthCheckIntervalSeconds'] = elb_data['LoadBalancerDescriptions'][0]['HealthCheck'][
+                'Interval']
+        target_group['HealthyThresholdCount'] = elb_data['LoadBalancerDescriptions'][0]['HealthCheck'][
+            'HealthyThreshold']
+        target_group['UnhealthyThresholdCount'] = elb_data['LoadBalancerDescriptions'][0]['HealthCheck'][
+            'UnhealthyThreshold']
+        target_group['HealthCheckPath'] = '/' + hc_target.split('/', 1)[1]
+        target_group['HealthCheckPort'] = hc_target[
+            hc_target.index(':') + 1: hc_target.index('/')]
+        target_group['HealthCheckProtocol'] = hc_target.split(':')[0]
+        target_group['VpcId'] = elb_data[
+            'LoadBalancerDescriptions'][0]['VPCId']
+        for target_group_attribute in alb_target_group_attributes_list:
             if listener['TargetGroup_Port'] == target_group_attribute['TargetGroup_Port']:
                 target_group['Port'] = listener['TargetGroup_Port']
                 target_group['Protocol'] = listener['TargetGroup_Protocol']
+                random_id = (''.join(choice(ascii_uppercase) for i in range(3)))
                 if 'stickiness.type' in target_group_attribute:
-                    target_group['Name'] = load_balancer_name[: 23] + "-tg-" + str(
-                        listener['TargetGroup_Port']) + "-" + (target_group_attribute['stickiness_policy'])
-                    # Only append unique Target Group
-                    if not any(tg['Name'] == target_group['Name'] for tg in alb_data['target_groups']):
-                        alb_data['target_groups'].append(target_group)
+                    target_group['Name'] = "{}-tg-stickiness-{}-{}".format(load_balancer_name[: 8],
+                                            str(listener['TargetGroup_Port']),random_id)
                 else:
-                    target_group['Name'] = load_balancer_name[
-                        : 23] + "-tg-" + str(listener['TargetGroup_Port'])
-                    # Only append unique Target Group
-                    if not any(tg['Name'] == target_group['Name'] for tg in alb_data['target_groups']):
-                        alb_data['target_groups'].append(target_group)
+                    target_group['Name'] = "{}-tg-{}-{}".format(
+                        load_balancer_name[: 8],str(listener['TargetGroup_Port']),random_id)
+            alb_target_group_attributes_list.remove(target_group_attribute)
+            alb_data['target_groups'].append(target_group)
+            break
 
     # create alb attributes
     alb_data['attributes'] = []
@@ -373,7 +384,7 @@ def get_alb_data(elb_data, region, load_balancer_name):
     return alb_data
 
 
-# Create ALB
+# Create Application Load Balancer
 def create_alb(alb_data):
     if debug:
         print("Creating the Application Load Balancer")
@@ -408,20 +419,23 @@ def create_target_groups(alb_data):
 
 
 # Create ALB Listener
-def create_listeners(alb_arn, alb_data, target_groups):
+def create_listeners(alb_arn, alb_data, target_group_arns):
+    tg_arn = target_group_arns[:]
     if debug:
         print("Getting listeners")
     for listener in alb_data['listeners']:
         # this is how we know which listener gets bound to which target group
-        for target_group in target_groups:
-            if target_group['backend_port'] == listener['TargetGroup_Port']:
+        for target_group_arn in tg_arn:
+            if target_group_arn['backend_port'] == listener['TargetGroup_Port']:
                 listener['DefaultActions'] = [
-                    {'TargetGroupArn': target_group['arn'], 'Type': 'forward'}]
+                    {'TargetGroupArn': target_group_arn['arn'], 'Type': 'forward'}]
                 # Remove these, else the call will fail.
                 listener.pop('TargetGroup_Protocol', None)
                 listener.pop('TargetGroup_Port', None)
+                tg_arn.remove(target_group_arn)
                 response = client.create_listener(
                     LoadBalancerArn=alb_arn, **listener)
+                break
                 if debug:
                     print("Create listener(%s) response: " %
                           (listener['Port']))
@@ -447,28 +461,33 @@ def load_attributes(alb_data, alb_arn):
 def target_group_attributes(alb_data, alb_arn):
     # Create a configuration dict of Target Group attributes
     attributes = {}
+    tg_arns = list(alb_data['target_group_arns'])
     for target_group_attribute in alb_data['target_group_attributes']:
-        for tg_arn in alb_data['target_group_arns']:
+        for tg_arn in tg_arns:
             # If target_group_attribute has stickiness_policy
             # Make sure each attribute set matches each target group
-            if ('stickiness_policy' in target_group_attribute):
-                if ((target_group_attribute['stickiness_policy']) in tg_arn['arn']):
-                    if tg_arn['arn'] not in attributes:
-                        attributes[tg_arn['arn']] = [{'Key': 'deregistration_delay.timeout_seconds', 'Value': target_group_attribute['dereg_timeout_seconds_delay']},
-                                                     {'Key': 'stickiness.enabled', 'Value': target_group_attribute[
-                                                         'stickiness.enabled']},
-                                                     {'Key': 'stickiness.type', 'Value': target_group_attribute[
-                                                         'stickiness.type']},
-                                                     {'Key': 'stickiness.lb_cookie.duration_seconds', 'Value': target_group_attribute[
-                                                         'stickiness.lb_cookie.duration_seconds']}
-                                                     ]
+            if 'stickiness_policy' in target_group_attribute:
+                if 'stickiness' in tg_arn['arn']:
+                    if tg_arn['backend_port']==target_group_attribute['TargetGroup_Port']:
+                        attributes[tg_arn['arn']] = \
+                            [{'Key': 'deregistration_delay.timeout_seconds',
+                              'Value': target_group_attribute['dereg_timeout_seconds_delay']},
+                            {'Key': 'stickiness.enabled',
+                             'Value': target_group_attribute['stickiness.enabled']},
+                            {'Key': 'stickiness.type',
+                             'Value': target_group_attribute['stickiness.type']},
+                            {'Key': 'stickiness.lb_cookie.duration_seconds',
+                             'Value': target_group_attribute['stickiness.lb_cookie.duration_seconds']}
+                            ]
+                        tg_arns.remove(tg_arn)
+                        break
             else:
-                arn_name = tg_arn['arn'].split('/')[1]
-                if (arn_name.count('-')) == 2:
-                    # Check if target arn has stickiness policy
-                    if tg_arn['arn'] not in attributes:
-                        attributes[tg_arn['arn']] = [
-                            {'Key': 'deregistration_delay.timeout_seconds', 'Value': target_group_attribute['dereg_timeout_seconds_delay']}]
+                if tg_arn['backend_port'] == target_group_attribute['TargetGroup_Port']:
+                    attributes[tg_arn['arn']] = [{'Key': 'deregistration_delay.timeout_seconds',
+                                                'Value': target_group_attribute['dereg_timeout_seconds_delay']}]
+                    tg_arns.remove(tg_arn)
+                    break
+
      # Configure Target Group attributes
     for arn in attributes:
         response = client.modify_target_group_attributes(
@@ -517,18 +536,22 @@ def main():
     :rtype: int
     """
     parser = argparse.ArgumentParser(
-        description='Create an Application Load Balancer from a Classic load balancer', usage='%(prog)s --name <elb name> --region')
+        description='Create an Application Load Balancer '
+                    'from a Classic load balancer', usage='%(prog)s --name <elb name> --region')
     parser.add_argument(
         "--name", help="The name of the Classic load balancer", required=True)
     parser.add_argument(
         "--profile", help="The credentials profile name to use", required=False, default=None)
-    parser.add_argument("--region", help="The region of the Classic load balancer (will also be used for the Application Load Balancer)",
+    parser.add_argument("--region", help="The region of the Classic load balancer "
+                                         "(will also be used for the Application Load Balancer)",
                         required=True)
     parser.add_argument("--debug", help="debug mode", action='store_true')
-    parser.add_argument("--register-targets", help="Register the backend instances of the Classic load balancer with the Application Load Balancer",
+    parser.add_argument("--register-targets", help="Register the backend instances "
+                                                   "of the Classic load balancer with the Application Load Balancer",
                         action='store_true')
-    parser.add_argument("--dry-run", help="Validate that the current load balancer configuration is compatible\
-with Application Load Balancers, but do not perform create operations",
+    parser.add_argument("--dry-run", help="Validate that "
+                                          "the current load balancer configuration is compatible "
+                                          "with Application Load Balancers, but do not perform create operations",
                         action='store_true')
     # if no options, print help
     if len(sys.argv[1:]) == 0:
@@ -553,7 +576,7 @@ with Application Load Balancers, but do not perform create operations",
 
     # Obtain ELB data
     elb_data = get_elb_data(load_balancer_name, region, args.profile)
-    # validate that an existing ALB with same name does not exist
+    # validate that an existing Application Load Balancer with same name does not exist
     if alb_exist(load_balancer_name, region):
         print('An Application Load Balancer currently exists with the name {} in {}'.format(
             load_balancer_name, region))
@@ -568,25 +591,26 @@ with Application Load Balancers, but do not perform create operations",
                 sys.exit(0)
             alb_data = get_alb_data(elb_data, region, load_balancer_name)
             alb_arn = create_alb(alb_data)
-            target_group_arns = create_target_groups(alb_data)
-            # print 'alb data', alb_data
-            create_listeners(alb_arn, alb_data, target_group_arns)
+            alb_target_group_arns = create_target_groups(alb_data)
+            create_listeners(alb_arn, alb_data, alb_target_group_arns)
             load_attributes(alb_data, alb_arn)
             target_group_attributes(alb_data, alb_arn)
-            add_tags(alb_data, alb_arn, target_group_arns)
+            add_tags(alb_data, alb_arn, alb_target_group_arns)
             if args.register_targets:
-                register_backends(target_group_arns, alb_data)
+                register_backends(alb_target_group_arns, alb_data)
             print("Your Application Load Balancer is ready!")
             print("Application Load Balancer ARN:")
             print(alb_arn)
             print("Target group ARNs:")
-            for target_group in target_group_arns:
+            for target_group in alb_target_group_arns:
                 print(target_group['arn'])
             print("Considerations:")
-            print("1. If your Classic load balancer is attached to an Auto Scaling group, attach the target groups to the Auto Scaling group.")
+            print("1. If your Classic load balancer is attached to "
+                  "an Auto Scaling group, attach the target groups to the Auto Scaling group.")
             print("2. All HTTPS listeners use the predefined security policy.")
             print(
-                "3. To use Amazon EC2 Container Service (Amazon ECS), register your containers as targets.")
+                "3. To use Amazon EC2 Container Service (Amazon ECS), "
+                "register your containers as targets.")
             return
     else:
         return 1
