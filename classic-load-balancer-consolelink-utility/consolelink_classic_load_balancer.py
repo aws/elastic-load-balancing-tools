@@ -125,6 +125,7 @@ def get_csv(elb_data):
         writer.writerow(fileds)
         for lb in elb_data:
             writer.writerow([lb.get(col,None) for col in fileds])
+            writer.writerow([lb.get(col, None) for col in fileds])
 
 def get_html(elb_data):
     '''
@@ -142,6 +143,16 @@ def get_html(elb_data):
                     html+='''<td><a href="{}">{}</a></td>'''.format(attribute,attribute.split('=')[-1])
                 else:
                     html += "<td>{}</td>".format(attribute)
+    html = """<!DOCTYPE html><html><title>Classic Load Balancer Console Link</title><body><table border="1"><tr>"""
+    column_names = sorted(list(set(k for d in elb_data for k in d)))
+    for column in column_names:
+        html += "<th>{}</th>".format(column)
+    html += "</tr>"
+    for lb in elb_data:
+        html += "<tr>"
+        for attribute in ([lb.get(col, None) for col in column_names]):
+            if isinstance(attribute, str) and (CONSOLE_PREFIX in attribute):
+                html+='''<td><a href="{}">{}</a></td>'''.format(attribute, attribute.split('=')[-1])
             else:
                 html += "<td>{}</td>".format(attribute)
         html += "</tr>"
