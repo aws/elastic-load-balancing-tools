@@ -15,5 +15,5 @@ Resources:
       Description: An Lambda function that returns "HelloWorld"
       Handler: helloworld_27.lambda_handler
       Runtime: python2.7
-      CodeUri: s3://exampleloadbalancer-net/test.zip
+      CodeUri: ./
 
