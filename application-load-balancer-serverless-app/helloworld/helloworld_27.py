@@ -15,6 +15,6 @@ def lambda_handler(event, context):
 
 	data = "Hello World from Lambda\n"
 	response['body'] = data
-	print '===Response==\n'
+	print '==Response==\n'
 	print response
 	return response
