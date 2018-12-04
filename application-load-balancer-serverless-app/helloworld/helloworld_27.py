@@ -3,14 +3,12 @@ def lambda_handler(event, context):
 	print event
 
 	response = {
-		"statusCode": 200,
-		"statusDescription": "HTTP OK",
-		"headers": {
-		"server": "my-server",
-		"set-cookie": "name=value",
-		"Content-Type": "text/html; charset=utf-8"
-		},
-		"isBase64Encoded": False
+		    "statusCode": 200,
+		    "statusDescription": "HTTP OK",
+		    "headers": {
+		        "Content-Type": "text/html; charset=utf-8"
+		    },
+			"isBase64Encoded": False
 		}
 
 	data = "Hello World from Lambda\n"
@@ -18,3 +16,4 @@ def lambda_handler(event, context):
 	print '==Response==\n'
 	print response
 	return response
+
