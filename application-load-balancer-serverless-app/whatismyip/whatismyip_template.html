@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html class="no-js" lang="en">
     <script src='https://d3js.org/d3.v4.min.js'></script>
     <head>
@@ -9,100 +10,26 @@
         <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:400,800">
         <link rel='stylesheet' href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
         <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
-        <link rel="stylesheet" href="/assets/styles.css">
+        <link rel="stylesheet" href="./assets/styles.css">
     </head>
 
     <body>
         <div class="container" style="background-position: left top; background-size: cover;">
-            <nav class="navbar navbar-expand-lg navbar-dark bg-primary navbar-fixed-top">
-                <a class="navbar-brand" href="/"><img src="/assets/logo.png" border=0>&nbsp; AWS Elastic Load Balancer Demos</a>
-                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-            <div class="collapse navbar-collapse" id="navbarSupportedContent">
-                <ul class="navbar-nav ml-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="https://aws.amazon.com/elasticloadbalancing/">Elastic Load Balancing</a>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" data-toggle="dropdown">Demos</a>
-                        <div class="dropdown-menu">
-                             <a class="dropdown-item" href="/lambda_demo.html">Lambda as target</a>
-                            <a class="dropdown-item" href="/auth_demo.html">Authentication</a>
-                            <a class="dropdown-item" href="/sni_demo.html">SNI</a>
-                            <a class="dropdown-item" href="/redirect_demo.html">Redirects</a>
-                            <a class="dropdown-item" href="/fixedresponse_demo.html">Fixed-response</a>
-                            <div class="dropdown-divider"></div>
-                            <a class="dropdown-item" href="https://network.exampleloadbalancer.com/nlbtoalb_demo.html">NLB->ALB</a>
-                            <a class="dropdown-item" href="/ondemandhealthcheck_demo.html">onDemandHealthCheck</a>
-                        </div>
-                    </li>
-                    <li class="nav-item">
-                        <a class="btn btn-primary btn-lg" href="/auth" role="button">Login</a>
-                    </li>
-                </ul>
-            </div>
-        </nav>
-            <div class="jumbotron jumbo-lead text-center">
-<!--                <img src="/assets/feature_250x250_loadbalancer_application.png" border=0 class="center">-->
+            <div class="jumbotron jumbo-lead text-center" style="background-image: url(./assets/orange-checker-bg.png);">
+            <img src="./assets/feature_250x250_loadbalancer_application.png" border=0 class="center">
                 <h1 class="display-4 text-center">What is my IP? Powered by Lambda as a target on Application Load Balancer.</h1>
-                <p>You can also get text output: <a href="/whatismyip?output=text">/whatismyip?output=text</a></p>
-                <p>or JSON with <a href="/whatismyip?output=json">/whatismyip?output=json</a></p>
+                <br>
+                <h4 class="display-5 text-center"><a href="https://exampleloadbalancer.com/lambda_demo.html" class="text-muted">More demos of Lambad as Target on Application Load Balancer</a></h4>
             </div>
 
-            <div class="jumbotron jumbo-body">
-                <img alt="AWS Cloud" title="Amazon Web Services" src="/assets/rule.png">
-                <p class="lead">
-                    <!--whatismyip-->
-                </p>
-            </div>
+            <div class="jumbotron jumbo-body" style="background-image: url(./assets/simple-orange-header.jpg);">
+                 <p class="lead">
+                <!--whatismyip-->
+                 </p>
+                <img alt="AWS Cloud" title="Amazon Web Services" src="./assets/rule.png">
+                <p>You can also get text output by using query string: "?output=text"</p>
+                <p>or JSON by using query string: "?output=json"</p>
 
-            <div class="row">
-
-                <div class="col-sm-12 col-md-6">
-                    <div class="card border-primary">
-                        <div class="card-body text-center">
-                            <a href="/lambda_demo.html" class="card-link">
-                            <h5 class="card-title">Lambda Demo</h5>
-                            <p class="card-text">See the Lambda demos
-                            </p></a>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-sm-12 col-md-6">
-                    <div class="card mb-4 border-primary">
-                        <div class="card-body text-center">
-                            <a href="/lambda_detail.html" class="card-link">
-                            <h5 class="card-title">Lambda as target Deep Dive</h5>
-                            <p class="card-text">See how Lambda as target work with Application Load Balancer
-                            </p></a>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-            <div class="row">
-                <div class="col-sm-12 col-md-6">
-                    <div class="card border-primary">
-                        <div class="card-body text-center">
-                            <a href="{{ blog_url }}" class="card-link">
-                            <h5 class="card-title">Blog Post</h5>
-                            <p class="card-text">Read the Blog Post from the launch of Lambda as a target for Application Load Balancer
-                            </p></a>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-sm-12 col-md-6">
-                    <div class="card mb-4 border-primary">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">We also have cats</h5>
-                            <p class="card-text">
-                            <img src="/assets/cat.jpg" border=0 class="img-fluid" alt="Cat">
-                            </p>
-                        </div>
-                    </div>
-                </div>
             </div>
 
                 <div class="row pb-4">
@@ -123,25 +50,5 @@
                     </div>
                 </div>
 
-                <div class="row pb-4">
-                    <div class="col-sm-12 col-md-12 text-sm-center text-md-left">
-                        <footer class="footer col-sm-12 col-md-12">
-                          <div class="container text-center">
-                            <span class="text-muted text-center">
-                            <a href="/privacy.html" class="text-muted">Privacy</a>
-                            &nbsp;
-                            <a href="/about.html" class="text-muted">About</a>
-                            </span>
-                          </div>
-                      </footer>
-                    </div>
-                </div>
-<!--- ELB DEMO FOOTER --->
-
-        <script src="/js/jquery.min.js"></script>
-        <script src="/js/popper.min.js"></script>
-        <script src="/js/bootstrap.min.js"></script>
-
-        </div>
     </body>
 </html>
