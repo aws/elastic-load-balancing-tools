@@ -1,0 +1,18 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: WhatismyIP Lambda function template for Application Load Balancer Lambda as target
+
+Outputs:
+  WhatismyIPFunctionArn:
+    Description: "WhatismyIPFunctionArn"
+    Value: !GetAtt WhatismyIPFunction.Arn
+
+Resources:
+  WhatismyIPFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: whatismyip.lambda_handler
+      Runtime: python2.7
+      CodeUri: ./
+      Timeout: 60
+
