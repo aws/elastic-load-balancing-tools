@@ -16,4 +16,5 @@ Resources:
       Handler: helloworld_27.lambda_handler
       Runtime: python2.7
       CodeUri: ./
+      Timeout: 300
 
