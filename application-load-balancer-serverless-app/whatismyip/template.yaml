@@ -11,6 +11,7 @@ Resources:
   WhatismyIPFunction:
     Type: AWS::Serverless::Function
     Properties:
+      Description: An Application Load Balancer Lambda Target that returns the source IP address of the client
       Handler: whatismyip.lambda_handler
       Runtime: python2.7
       CodeUri: ./

@@ -1,18 +1,15 @@
-# ALB-Lambda-Target-WhatIsMyIP
+# ALB-Lambda-Target-UploadFiletoS3
  
-A sample Lambda function template that works with Application Load Balancer. It returns a page with client's source IP address when it is triggered.
+A sample Lambda function template that works with Application Load Balancer. You can upload a binary file (e.g. an image or video file) to your S3 bucket with a **POST** request to trigger this Lambd function through your Application Load Balancer. 
 
-You can also use query string parameter to specify the output format. 
 
-For example, you can get text output by using query string -- "?output=text":
-```
-curl -ivv "http(s)://<<ALB FQDN and path to your Lambda target>>?output=text
-```
-You can also get JSON by using query string -- "?output=json"
-```
-curl -ivv "http(s)://<<ALB FQDN and path to your Lambda target>>?output=json
-```
+You need to use query string parameter to specify the S3 bucket , S3 Object Key (file name) that the Lambda function can use to upload the file as an object to S3.
 
+For example, to upload an image file -- logo.png as test.png to the S3 bucket -- myBucket:
+
+```
+curl -ivv -X POST -H "Content-Type: image/png" -F "data=@logo.png" "http(s)://<<ALB FQDN and path to your Lambda target>>?objectname=test.png&bucketname=myBucket"
+```
 
 [More demo of Lambda as target on Application Load Balancer](https://exampleloadbalancer.com/lambda_demo.html)
 ## TO DEPLOY
@@ -37,8 +34,6 @@ To create a target group and register the Lambda function
 
 6. Register the Lambda function that is deployed earlier after you create the target group
 
-## How does it look like
-![](https://github.com/renlon/elastic-load-balancing-tools/blob/master/application-load-balancer-serverless-app/whatismyip/app.jpg)
 
 ## License
 

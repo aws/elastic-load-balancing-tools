@@ -1,0 +1,20 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: UploadFiletoS3 Lambda function template for Application Load Balancer Lambda as target
+
+Outputs:
+  UploadFiletoS3FunctionARN:
+    Description: "ARN of the UploadFiletoS3 Lambda function"
+    Value: !GetAtt UploadFiletoS3Function.Arn
+
+
+Resources:
+  UploadFiletoS3Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: An Application Load Balancer Lambda Target that upload files to S3
+      Handler: uploadfile_27.lambda_handler
+      Runtime: python2.7
+      CodeUri: ./
+      Timeout: 300
+

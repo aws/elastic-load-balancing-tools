@@ -1,0 +1,20 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: BinaryResponse Lambda function template for Application Load Balancer Lambda as target
+
+Outputs:
+  BinaryResponseFunctionARN:
+    Description: "ARN of the BinaryResponse Lambda function"
+    Value: !GetAtt BinaryResponseFunction.Arn
+
+
+Resources:
+  BinaryResponseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: An Application Load Balancer Lambda Target that sends a .png image to the client.
+      Handler: binary_response_27.lambda_handler
+      Runtime: python2.7
+      CodeUri: ./
+      Timeout: 300
+

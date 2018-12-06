@@ -1,18 +1,6 @@
-# ALB-Lambda-Target-WhatIsMyIP
+# ALB-Lambda-Target-HelloWorld
  
-A sample Lambda function template that works with Application Load Balancer. It returns a page with client's source IP address when it is triggered.
-
-You can also use query string parameter to specify the output format. 
-
-For example, you can get text output by using query string -- "?output=text":
-```
-curl -ivv "http(s)://<<ALB FQDN and path to your Lambda target>>?output=text
-```
-You can also get JSON by using query string -- "?output=json"
-```
-curl -ivv "http(s)://<<ALB FQDN and path to your Lambda target>>?output=json
-```
-
+A sample Lambda function template that works with Application Load Balancer. It reads a local .png image file, encodes the image data through base64, put the data into an HTTP response and sends it to the client. 
 
 [More demo of Lambda as target on Application Load Balancer](https://exampleloadbalancer.com/lambda_demo.html)
 ## TO DEPLOY
@@ -36,9 +24,6 @@ To create a target group and register the Lambda function
 5. For **Target type**, select **Lambda function**.
 
 6. Register the Lambda function that is deployed earlier after you create the target group
-
-## How does it look like
-![](https://github.com/renlon/elastic-load-balancing-tools/blob/master/application-load-balancer-serverless-app/whatismyip/app.jpg)
 
 ## License
 
