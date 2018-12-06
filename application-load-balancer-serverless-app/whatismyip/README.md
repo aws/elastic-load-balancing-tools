@@ -11,3 +11,9 @@ aws cloudformation deploy --template-file serverless-output.yaml --stack-name <<
 
 ## How does it look like
 ![](https://github.com/renlon/elastic-load-balancing-tools/blob/master/application-load-balancer-serverless-app/whatismyip/app.jpg)
+
+## License
+
+Apache License 2.0 (Apache-2.0)
+
+Made with ❤️ by longren. Available on the [AWS Serverless Application Repository](https://aws.amazon.com/serverless)
