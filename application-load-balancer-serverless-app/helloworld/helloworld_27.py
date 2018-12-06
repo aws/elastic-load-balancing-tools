@@ -20,7 +20,7 @@ def lambda_handler(event, context):
 	</style>
 	</head>
 	<body>
-	<p>Hello World!</p>
+	<p>Hello World from Lambda</p>
 	</body>
 	</html>"""
 	return response

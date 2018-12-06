@@ -1,6 +1,15 @@
-# ALB-Lambda-Target-HelloWorld
+# ALB-Lambda-Target-UploadFiletoS3
  
-A sample Lambda function template that works with Application Load Balancer. It reads a local .png image file, encodes the image data through base64, put the data into an HTTP response and sends it to the client. 
+A sample Lambda function template that works with Application Load Balancer. You can upload a binary file (e.g. an image or video file) to your S3 bucket with a **POST** request to trigger this Lambd function through your Application Load Balancer. 
+
+
+You need to use query string parameter to specify the S3 bucket , S3 Object Key (file name) that the Lambda function can use to upload the file as an object to S3.
+
+For example, to upload an image file -- logo.png as test.png to the S3 bucket -- myBucket:
+
+```
+curl -ivv -X POST -H "Content-Type: image/png" -F "data=@logo.png" "http(s)://<<ALB FQDN and path to your Lambda target>>?objectname=test.png&bucketname=myBucket"
+```
 
 [More demo of Lambda as target on Application Load Balancer](https://exampleloadbalancer.com/lambda_demo.html)
 ## TO DEPLOY
@@ -24,6 +33,7 @@ To create a target group and register the Lambda function
 5. For **Target type**, select **Lambda function**.
 
 6. Register the Lambda function that is deployed earlier after you create the target group
+
 
 ## License
 

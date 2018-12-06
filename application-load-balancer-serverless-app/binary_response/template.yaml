@@ -12,7 +12,7 @@ Resources:
   BinaryResponseFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Description: An Lambda function that returns "HelloWorld"
+      Description: An Application Load Balancer Lambda Target that sends a .png image to the client.
       Handler: binary_response_27.lambda_handler
       Runtime: python2.7
       CodeUri: ./
