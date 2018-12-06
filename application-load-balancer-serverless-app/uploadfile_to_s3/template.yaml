@@ -17,4 +17,21 @@ Resources:
       Runtime: python2.7
       CodeUri: ./
       Timeout: 300
+      Role: !GetAtt UploadFiletoS3FunctionRole.Arn
+    DependsOn:
+    - UploadFiletoS3FunctionRole
 
+  UploadFiletoS3FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AmazonS3FullAccess
