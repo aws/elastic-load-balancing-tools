@@ -11,6 +11,9 @@ For example, to upload an image file -- logo.png as test.png to the S3 bucket --
 curl -ivv -X POST -H "Content-Type: image/png" -F "data=@logo.png" "http(s)://<<ALB FQDN and path to your Lambda target>>?objectname=test.png&bucketname=myBucket"
 ```
 
+
+*Note: This template creates an IAM role that the Lambda function can assume to upload files to S3. Please adjust the IAM role for your own use case.*
+
 [More demo of Lambda as target on Application Load Balancer](https://exampleloadbalancer.com/lambda_demo.html)
 ## TO DEPLOY
 ```
@@ -39,4 +42,4 @@ To create a target group and register the Lambda function
 
 Apache License 2.0 (Apache-2.0)
 
-Made with ❤️ by longren. Available on the [AWS Serverless Application Repository](https://aws.amazon.com/serverless)
+Made with ❤️ by AWS Elastic Load Balancing. Available on the [AWS Serverless Application Repository](https://aws.amazon.com/serverless)

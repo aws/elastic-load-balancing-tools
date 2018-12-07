@@ -29,4 +29,4 @@ To create a target group and register the Lambda function
 
 Apache License 2.0 (Apache-2.0)
 
-Made with ❤️ by longren. Available on the [AWS Serverless Application Repository](https://aws.amazon.com/serverless)
+Made with ❤️ by AWS Elastic Load Balancing. Available on the [AWS Serverless Application Repository](https://aws.amazon.com/serverless)
