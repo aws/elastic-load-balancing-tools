@@ -4,7 +4,7 @@ This document includes an overview of setting up Amazon Athena and table creatio
 Setup steps:
 1. Setup AWS account, ELB + enable access logs
 2. Configure your S3 bucket for Athena access
-3. Setup your new database and table refer to https://docs.aws.amazon.com/athena/latest/ug/application-load-balancer-logs.html#create-alb-table for the latest query to create the table
+3. Setup your new database and table refer to https://docs.aws.amazon.com/athena/latest/ug/elasticloadbalancer-classic-logs.html#create-elb-table for the latest query to create the table
 ```sql
 CREATE EXTERNAL TABLE IF NOT EXISTS clb_logs (
  request_timestamp string,
