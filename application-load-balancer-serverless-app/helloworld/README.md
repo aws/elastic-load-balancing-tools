@@ -9,7 +9,7 @@ aws cloudformation package --template-file template.yaml --output-template-file 
 aws cloudformation deploy --template-file serverless-output.yaml --stack-name <<<YOUR STACK NAME>>> --capabilities CAPABILITY_IAM
 ```
 
-##Register Lambda to your Application Load Balancer
+## Register Lambda to your Application Load Balancer
 Create a target group, which is used in request routing. If the request content matches a listener rule with an action to forward it to this target group, the load balancer invokes the registered Lambda function. 
 To create a target group and register the Lambda function
 
