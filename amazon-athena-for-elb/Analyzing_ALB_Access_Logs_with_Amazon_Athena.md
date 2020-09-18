@@ -7,43 +7,46 @@ Setup steps:
 3. Setup your new database and table refer to https://docs.aws.amazon.com/athena/latest/ug/application-load-balancer-logs.html#create-alb-table for the latest query to create the table
 ```sql
 CREATE EXTERNAL TABLE IF NOT EXISTS alb_logs (
-    type string,
-    time string,
-    elb string,
-    client_ip string,
-    client_port int,
-    target_ip string,
-    target_port int,
-    request_processing_time double,
-    target_processing_time double,
-    response_processing_time double,
-    elb_status_code string,
-    target_status_code string,
-    received_bytes bigint,
-    sent_bytes bigint,
-    request_verb string,
-    request_url string,
-    request_proto string,
-    user_agent string,
-    ssl_cipher string,
-    ssl_protocol string,
-    target_group_arn string,
-    trace_id string,
-    domain_name string,
-    chosen_cert_arn string,
-    matched_rule_priority string,
-    request_creation_time string,
-    actions_executed string,
-    redirect_url string,
-    lambda_error_reason string,
-    new_field string
-    )
-    ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
-    WITH SERDEPROPERTIES (
-    'serialization.format' = '1',
-    'input.regex' = 
-'([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([-.0-9]*) ([-.0-9]*) ([-.0-9]*) (|[-0-9]*) (-|[-0-9]*) ([-0-9]*) ([-0-9]*) \"([^ ]*) ([^ ]*) (- |[^ ]*)\" \"([^\"]*)\" ([A-Z0-9-]+) ([A-Za-z0-9.-]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^\"]*)\" ([-.0-9]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\"($| \"[^ ]*\")(.*)')
-    LOCATION 's3://your-alb-logs-directory/AWSLogs/<ACCOUNT-ID>/elasticloadbalancing/region';
+            type string,
+            time string,
+            elb string,
+            client_ip string,
+            client_port int,
+            target_ip string,
+            target_port int,
+            request_processing_time double,
+            target_processing_time double,
+            response_processing_time double,
+            elb_status_code string,
+            target_status_code string,
+            received_bytes bigint,
+            sent_bytes bigint,
+            request_verb string,
+            request_url string,
+            request_proto string,
+            user_agent string,
+            ssl_cipher string,
+            ssl_protocol string,
+            target_group_arn string,
+            trace_id string,
+            domain_name string,
+            chosen_cert_arn string,
+            matched_rule_priority string,
+            request_creation_time string,
+            actions_executed string,
+            redirect_url string,
+            lambda_error_reason string,
+            target_port_list string,
+            target_status_code_list string,
+            classification string,
+            classification_reason string
+            )
+            ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
+            WITH SERDEPROPERTIES (
+            'serialization.format' = '1',
+            'input.regex' = 
+        '([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([-.0-9]*) ([-.0-9]*) ([-.0-9]*) (|[-0-9]*) (-|[-0-9]*) ([-0-9]*) ([-0-9]*) \"([^ ]*) ([^ ]*) (- |[^ ]*)\" \"([^\"]*)\" ([A-Z0-9-]+) ([A-Za-z0-9.-]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^\"]*)\" ([-.0-9]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^ ]*)\" \"([^\s]+?)\" \"([^\s]+)\" \"([^ ]*)\" \"([^ ]*)\"')
+            LOCATION 's3://your-alb-logs-directory/AWSLogs/<ACCOUNT-ID>/elasticloadbalancing/<REGION>/';
 ```
 4. Run queries
 ### Select data information for time period
@@ -110,4 +113,14 @@ CREATE EXTERNAL TABLE IF NOT EXISTS alb_logs (
     SELECT count(1) AS requests,
          count(1)/date_diff('second',date_parse(min(time),'%Y-%m-%dT%H:%i:%s.%fZ'),date_parse(max(time),'%Y-%m-%dT%H:%i:%s.%fZ')) AS requestPerSecond,avg(received_bytes + sent_bytes) AS avg_requestSize_bytes, min(time) AS startTime, max(time) AS endTime
     FROM alb_logs;
+```
+### Summary of Non-Compliant HTTP Requests
+```sql
+    SELECT COUNT(1) AS requests,
+     request_verb,
+     classification,
+     classification_reason
+    FROM alb_logs
+    GROUP BY request_verb, classification, classification_reason
+    LIMIT 100;
 ```
