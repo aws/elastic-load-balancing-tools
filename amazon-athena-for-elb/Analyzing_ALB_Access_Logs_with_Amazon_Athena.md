@@ -36,7 +36,9 @@ CREATE EXTERNAL TABLE IF NOT EXISTS alb_logs (
     actions_executed string,
     redirect_url string,
     lambda_error_reason string,
-    new_field string
+    new_field string,
+    classification string,
+    classification_reason string
     )
     ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
     WITH SERDEPROPERTIES (
@@ -110,4 +112,14 @@ CREATE EXTERNAL TABLE IF NOT EXISTS alb_logs (
     SELECT count(1) AS requests,
          count(1)/date_diff('second',date_parse(min(time),'%Y-%m-%dT%H:%i:%s.%fZ'),date_parse(max(time),'%Y-%m-%dT%H:%i:%s.%fZ')) AS requestPerSecond,avg(received_bytes + sent_bytes) AS avg_requestSize_bytes, min(time) AS startTime, max(time) AS endTime
     FROM alb_logs;
+```
+### Summary of Non-Compliant HTTP Requests
+```sql
+    SELECT COUNT(1) AS requests,
+     request_verb,
+     classification,
+     classification_reason
+    FROM alb_logs
+    GROUP BY request_verb, classification, classification_reason
+    LIMIT 100;
 ```
