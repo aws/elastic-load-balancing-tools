@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="331fc435-0817-4a36-8bf1-9adf6dc76482" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/proprot/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/proprot/pom.xml" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="HTML File" />
+      </list>
+    </option>
+  </component>
+  <component name="FindInProjectRecents">
+    <findStrings>
+      <find>css</find>
+      <find>assets</find>
+      <find>image</find>
+      <find>asset</find>
+      <find>data</find>
+    </findStrings>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="IdeDocumentHistory">
+    <option name="CHANGED_PATHS">
+      <list>
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/whatismyip/styles.css" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/whatismyip/assets/styles.css" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/whatismyip/whatismyip_template.html" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/README.md" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/binary_response/binary_response_27.py" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/helloworld/template.yaml" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/whatismyip/template.yaml" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/helloworld/helloworld_27.py" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/helloworld/test.html" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/binary_request/README.md" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/binary_request/binary_request_27.py" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/binary_request/template.yaml" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/uploadfile/README.md" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/binary_response/template.yaml" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/uploadfile_to_s3/template.yaml" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/binary_response/README.md" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/helloworld/README.md" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/whatismyip/README.md" />
+        <option value="$PROJECT_DIR$/application-load-balancer-serverless-app/uploadfile_to_s3/README.md" />
+      </list>
+    </option>
+  </component>
+  <component name="ProjectFrameBounds">
+    <option name="x" value="1222" />
+    <option name="y" value="1463" />
+    <option name="width" value="1280" />
+    <option name="height" value="732" />
+  </component>
+  <component name="ProjectId" id="1tdqorgiMqpnx7SIE903QVFx3CP" />
+  <component name="ProjectInspectionProfilesVisibleTreeState">
+    <entry key="Project Default">
+      <profile-state>
+        <expanded-state>
+          <State>
+            <id />
+          </State>
+          <State>
+            <id>Buildout</id>
+          </State>
+          <State>
+            <id>Python</id>
+          </State>
+          <State>
+            <id>Spelling</id>
+          </State>
+        </expanded-state>
+        <selected-state>
+          <State>
+            <id>PyPep8NamingInspection</id>
+          </State>
+        </selected-state>
+      </profile-state>
+    </entry>
+  </component>
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="1" id="Add" />
+  </component>
+  <component name="ProjectView">
+    <navigator proportions="" version="1">
+      <foldersAlwaysOnTop value="true" />
+    </navigator>
+    <panes>
+      <pane id="Scope" />
+      <pane id="ProjectPane">
+        <subPane>
+          <expand>
+            <path>
+              <item name="elastic-load-balancing-tools" type="b2602c69:ProjectViewProjectNode" />
+              <item name="elastic-load-balancing-tools" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="elastic-load-balancing-tools" type="b2602c69:ProjectViewProjectNode" />
+              <item name="elastic-load-balancing-tools" type="462c0819:PsiDirectoryNode" />
+              <item name="application-load-balancer-serverless-app" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="elastic-load-balancing-tools" type="b2602c69:ProjectViewProjectNode" />
+              <item name="elastic-load-balancing-tools" type="462c0819:PsiDirectoryNode" />
+              <item name="application-load-balancer-serverless-app" type="462c0819:PsiDirectoryNode" />
+              <item name="binary_response" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="elastic-load-balancing-tools" type="b2602c69:ProjectViewProjectNode" />
+              <item name="elastic-load-balancing-tools" type="462c0819:PsiDirectoryNode" />
+              <item name="application-load-balancer-serverless-app" type="462c0819:PsiDirectoryNode" />
+              <item name="helloworld" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="elastic-load-balancing-tools" type="b2602c69:ProjectViewProjectNode" />
+              <item name="elastic-load-balancing-tools" type="462c0819:PsiDirectoryNode" />
+              <item name="application-load-balancer-serverless-app" type="462c0819:PsiDirectoryNode" />
+              <item name="uploadfile_to_s3" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="elastic-load-balancing-tools" type="b2602c69:ProjectViewProjectNode" />
+              <item name="elastic-load-balancing-tools" type="462c0819:PsiDirectoryNode" />
+              <item name="application-load-balancer-serverless-app" type="462c0819:PsiDirectoryNode" />
+              <item name="whatismyip" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="elastic-load-balancing-tools" type="b2602c69:ProjectViewProjectNode" />
+              <item name="Scratches and Consoles" type="1a2a3e82:ScratchProjectViewPane$MyProjectNode" />
+            </path>
+          </expand>
+          <select />
+        </subPane>
+      </pane>
+    </panes>
+  </component>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="DefaultHtmlFileTemplate" value="HTML File" />
+    <property name="WebServerToolWindowFactoryState" value="false" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="settings.editor.selected.configurable" value="project.propVCSSupport.Mappings" />
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="SvnConfiguration">
+    <configuration />
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="331fc435-0817-4a36-8bf1-9adf6dc76482" name="Default Changelist" comment="" />
+      <created>1543967422081</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1543967422081</updated>
+      <workItem from="1623109494866" duration="1055000" />
+      <workItem from="1623185452168" duration="19000" />
+    </task>
+    <servers />
+  </component>
+  <component name="ToolWindowManager">
+    <frame x="1222" y="1463" width="1280" height="732" extended-state="0" />
+    <editor active="true" />
+    <layout>
+      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.30659252" />
+      <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
+      <window_info id="Favorites" order="2" side_tool="true" />
+      <window_info anchor="bottom" id="Message" order="0" />
+      <window_info anchor="bottom" id="Find" order="1" />
+      <window_info anchor="bottom" id="Run" order="2" />
+      <window_info anchor="bottom" id="Debug" order="3" weight="0.4" />
+      <window_info anchor="bottom" id="Cvs" order="4" weight="0.25" />
+      <window_info anchor="bottom" id="Inspection" order="5" weight="0.4" />
+      <window_info anchor="bottom" id="TODO" order="6" />
+      <window_info anchor="bottom" id="Version Control" order="7" show_stripe_button="false" />
+      <window_info anchor="bottom" id="Terminal" order="8" />
+      <window_info anchor="bottom" id="Event Log" order="9" side_tool="true" />
+      <window_info anchor="bottom" id="Python Console" order="10" />
+      <window_info anchor="right" id="Commander" order="0" weight="0.4" />
+      <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
+      <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
+    </layout>
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="editorHistoryManager">
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/whatismyip/styles.css" />
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/whatismyip/assets/styles.css" />
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/README.md">
+      <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
+        <state split_layout="SPLIT">
+          <first_editor relative-caret-position="102">
+            <caret line="6" selection-start-line="6" selection-end-line="6" />
+          </first_editor>
+          <second_editor />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/whatismyip/whatismyip_template.html">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="493">
+          <caret line="29" column="31" selection-start-line="29" selection-start-column="27" selection-end-line="29" selection-end-column="31" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/helloworld/test.html" />
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/whatismyip/template.yaml">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="289">
+          <caret line="17" column="17" selection-start-line="17" selection-start-column="15" selection-end-line="17" selection-end-column="17" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/helloworld/template.yaml">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="238">
+          <caret line="14" column="87" selection-start-line="14" selection-start-column="19" selection-end-line="14" selection-end-column="87" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/binary_response/template.yaml">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="340">
+          <caret line="20" selection-start-line="20" selection-end-line="20" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/uploadfile_to_s3/license.txt">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/uploadfile_to_s3/template.yaml">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="34">
+          <caret line="2" column="99" lean-forward="true" selection-start-line="2" selection-start-column="13" selection-end-line="2" selection-end-column="99" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/binary_response/README.md">
+      <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
+        <state split_layout="SPLIT">
+          <first_editor relative-caret-position="471">
+            <caret line="31" column="42" selection-start-line="31" selection-start-column="42" selection-end-line="31" selection-end-column="42" />
+          </first_editor>
+          <second_editor />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/helloworld/README.md">
+      <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
+        <state split_layout="SPLIT">
+          <first_editor relative-caret-position="504">
+            <caret line="32" column="42" selection-start-line="32" selection-start-column="42" selection-end-line="32" selection-end-column="42" />
+          </first_editor>
+          <second_editor />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/whatismyip/README.md">
+      <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
+        <state split_layout="SPLIT">
+          <first_editor relative-caret-position="471">
+            <caret line="46" column="42" selection-start-line="46" selection-start-column="42" selection-end-line="46" selection-end-column="42" />
+          </first_editor>
+          <second_editor />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/uploadfile_to_s3/README.md">
+      <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
+        <state split_layout="SPLIT">
+          <first_editor relative-caret-position="238">
+            <caret line="14" column="95" selection-start-line="14" selection-start-column="95" selection-end-line="14" selection-end-column="95" />
+          </first_editor>
+          <second_editor />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/helloworld/helloworld_27.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="408">
+          <caret line="24" column="14" selection-start-line="10" selection-start-column="4" selection-end-line="24" selection-end-column="14" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/binary_response/binary_response_27.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="238">
+          <caret line="14" column="5" lean-forward="true" selection-start-line="7" selection-start-column="4" selection-end-line="14" selection-end-column="5" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/uploadfile_to_s3/uploadfile_27.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="833">
+          <caret line="49" selection-start-line="49" selection-end-line="49" />
+          <folding>
+            <element signature="e#0#13#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/application-load-balancer-serverless-app/whatismyip/whatismyip.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <folding>
+            <element signature="e#0#11#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+  </component>
+  <component name="masterDetails">
+    <states>
+      <state key="ScopeChooserConfigurable.UI">
+        <settings>
+          <splitter-proportions>
+            <option name="proportions">
+              <list>
+                <option value="0.2" />
+              </list>
+            </option>
+          </splitter-proportions>
+        </settings>
+      </state>
+    </states>
+  </component>
+</project>
