@@ -98,6 +98,17 @@ CREATE EXTERNAL TABLE IF NOT EXISTS alb_logs (
     FROM alb_logs
     GROUP BY  ssl_cipher limit 100;
 ```
+### Last 30 Day Ciphers and TLS Version by use
+```sql
+    SELECT DISTINCT ssl_cipher AS TLSCipher,
+         ssl_protocol AS TLSVersion,
+         count(ssl_cipher) AS TLSCipherCount
+    FROM alb_logs
+    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+        AND NOT ssl_protocol = '-'
+    GROUP BY  ssl_cipher,ssl_protocol
+    ORDER BY  TLSCipherCount DESC
+```
 ### Top 100 backends
 ```sql
     SELECT target_ip AS backend,
