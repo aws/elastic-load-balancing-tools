@@ -1,6 +1,8 @@
 # Analyzing ALB Access Logs with Amazon Athena
 This document includes an overview of setting up Amazon Athena and table creation for Elastic Load Balancing log analysis.
 
+> For a CDK & CloudFormation sample that deploys this solution: https://github.com/aws/elastic-load-balancing-tools/blob/master/log-analysis-elb
+
 Setup steps:
 1. Setup AWS account, ELB + enable access logs
 2. Configure your S3 bucket for Athena access
