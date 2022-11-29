@@ -1,0 +1,545 @@
+Description: Athena & Glue resources for ELB Access Logs analysis
+Parameters:
+  LBLogsBucketName:
+    Type: String
+    Description: The name of the Amazon S3 bucket where the ELB Logs are located.
+Resources:
+
+  dbelblogsathenaelblogstack637ED423:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId:
+        Ref: AWS::AccountId
+      DatabaseInput:
+        Name: !Sub db_elb_logs_${AWS::StackName}
+
+  keylogsathenaAthenaElbLogStack61CFBB92:
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Statement:
+          - Action: kms:*
+            Effect: Allow
+            Principal:
+              AWS:
+                Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - ":iam::"
+                    - Ref: AWS::AccountId
+                    - :root
+            Resource: "*"
+          - Action:
+              - kms:Encrypt
+              - kms:Decrypt
+            Effect: Allow
+            Principal:
+              AWS:
+                Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - ":iam::"
+                    - Ref: AWS::AccountId
+                    - :root
+            Resource: "*"
+        Version: "2012-10-17"
+      Description: Key for ELB Logs Athena - AthenaElbLogStack
+      EnableKeyRotation: true
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+  elblogsathenaAthenaElbLogStack062B4278:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              KMSMasterKeyID:
+                Fn::GetAtt:
+                  - keylogsathenaAthenaElbLogStack61CFBB92
+                  - Arn
+              SSEAlgorithm: aws:kms
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+  wgelblogsathenaelblogstack:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: !Sub wg_elb_logs_${AWS::StackName}
+      Description: Workgroup for ELB logs
+      RecursiveDeleteOption: true
+      State: ENABLED
+      Tags:
+        - Key: wg_elb_logs
+          Value: "True"
+      WorkGroupConfiguration:
+        PublishCloudWatchMetricsEnabled: false
+        RequesterPaysEnabled: false
+        ResultConfiguration:
+          OutputLocation:
+            Fn::Join:
+              - ""
+              - - s3://
+                - Ref: elblogsathenaAthenaElbLogStack062B4278
+                - /logs_query_results/
+  tbalblogsTableE8E80A50:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId:
+        Ref: AWS::AccountId
+      DatabaseName:
+        Ref: dbelblogsathenaelblogstack637ED423
+      TableInput:
+        Description: !Sub tb_alb_logs_${LBLogsBucketName}
+        Name: !Sub tb_alb_logs_${LBLogsBucketName}
+        Parameters:
+          has_encrypted_data: false
+          projection.day.digits: "2"
+          projection.day.range: 01,31
+          projection.day.type: integer
+          projection.month.digits: "2"
+          projection.month.range: 01,12
+          projection.month.type: integer
+          projection.year.digits: "4"
+          projection.year.type: integer
+          projection.year.range: 2017,2022
+          projection.enabled: "true"
+          EXTERNAL: "TRUE"
+          storage.location.template:
+            Fn::Join:
+              - ""
+              - - s3://
+                - Ref: LBLogsBucketName
+                - /AWSLogs/
+                - Ref: AWS::AccountId
+                - /elasticloadbalancing/us-east-1/${year}/${month}/${day}
+        PartitionKeys:
+          - Name: year
+            Type: int
+          - Name: month
+            Type: int
+          - Name: day
+            Type: int
+        StorageDescriptor:
+          Columns:
+            - Name: type
+              Type: string
+            - Name: time
+              Type: string
+            - Name: elb
+              Type: string
+            - Name: client_ip
+              Type: string
+            - Name: client_port
+              Type: int
+            - Name: target_ip
+              Type: string
+            - Name: target_port
+              Type: int
+            - Name: request_processing_time
+              Type: double
+            - Name: target_processing_time
+              Type: double
+            - Name: response_processing_time
+              Type: double
+            - Name: elb_status_code
+              Type: int
+            - Name: target_status_code
+              Type: int
+            - Name: received_bytes
+              Type: bigint
+            - Name: sent_bytes
+              Type: bigint
+            - Name: request_verb
+              Type: string
+            - Name: request_url
+              Type: string
+            - Name: request_proto
+              Type: string
+            - Name: user_agent
+              Type: string
+            - Name: ssl_cipher
+              Type: string
+            - Name: ssl_protocol
+              Type: string
+            - Name: target_group_arn
+              Type: string
+            - Name: trace_id
+              Type: string
+            - Name: domain_name
+              Type: string
+            - Name: chosen_cert_arn
+              Type: string
+            - Name: matched_rule_priority
+              Type: string
+            - Name: request_creation_time
+              Type: string
+            - Name: actions_executed
+              Type: string
+            - Name: redirect_url
+              Type: string
+            - Name: lambda_error_reason
+              Type: string
+            - Name: target_port_list
+              Type: string
+            - Name: target_status_code_list
+              Type: string
+            - Name: classification
+              Type: string
+            - Name: classification_reason
+              Type: string
+          Compressed: false
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          Location:
+            Fn::Join:
+              - ""
+              - - s3://
+                - Ref: LBLogsBucketName
+                - /AWSLogs/
+                - Ref: AWS::AccountId
+                - /elasticloadbalancing/us-east-1
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            Parameters:
+              serialization.format: 1
+              input.regex: ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([-.0-9]*) ([-.0-9]*) ([-.0-9]*) (|[-0-9]*) (-|[-0-9]*) ([-0-9]*) ([-0-9]*) "([^ ]*) ([^ ]*) (- |[^ ]*)" "([^"]*)" ([A-Z0-9-]+) ([A-Za-z0-9.-]*) ([^ ]*) "([^"]*)" "([^"]*)" "([^"]*)" ([-.0-9]*) ([^ ]*) "([^"]*)" "([^"]*)" "([^ ]*)" "([^s]+?)" "([^s]+)" "([^ ]*)" "([^ ]*)"
+            SerializationLibrary: org.apache.hadoop.hive.serde2.RegexSerDe
+          StoredAsSubDirectories: false
+        TableType: EXTERNAL_TABLE
+  ALBTLSVersion30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, ssl_protocol, ROUND((COUNT(ssl_protocol)* 100.0 / (SELECT COUNT(*) FROM "tb_alb_logs_${LBLogsBucketName}" WHERE ssl_protocol != '-')),2) AS percentage, COUNT() AS requests
+                    FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                        AND NOT ssl_protocol = '-'
+                    GROUP BY elb, ssl_protocol
+                    ORDER BY percentage DESC
+      Description: ALB - TLS Version - 30 days
+      Name: !Sub ALB - TLS Version - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+
+  ALBTLSCiphersuites30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, ssl_cipher, ROUND((COUNT(ssl_cipher)* 100.0 / (SELECT COUNT(*) FROM "tb_alb_logs_${LBLogsBucketName}" WHERE ssl_cipher != '-')),2) AS percentage, COUNT() AS requests
+                    FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                        AND NOT ssl_cipher = '-'
+                    GROUP BY elb, ssl_cipher
+                    ORDER BY percentage DESC
+      Description: ALB - TLS Ciphersuites - 30 days
+      Name: !Sub ALB - TLS Ciphersuites - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBRequestType30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, type, round((Count(type)* 100.0 / (Select Count(*) From "tb_alb_logs_${LBLogsBucketName}")),2) AS percentage, COUNT(type) AS requests
+                    FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                    GROUP BY  elb, type
+                    ORDER BY percentage DESC
+      Description: ALB - Request Type - 30 days
+      Name: !Sub ALB - Request Type - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBTLSVersionandCiphersuitescombined30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT DISTINCT elb, ssl_cipher, ssl_protocol,  count(ssl_cipher) AS requests
+                    FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                        AND NOT ssl_protocol = '-'
+                    GROUP BY elb, ssl_cipher,ssl_protocol
+                    ORDER BY requests DESC
+      Description: ALB - TLS Version and Ciphersuites combined - 30 days
+      Name: !Sub ALB - TLS Version and Ciphersuites combined - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBTop10TLS10talkers30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, client_ip, COUNT(*) AS requests
+                    FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                        AND ssl_protocol = 'TLSv1'
+                    GROUP BY elb, client_ip
+                    ORDER BY requests DESC
+                    LIMIT 10
+      Description: ALB - Top 10 TLS 1.0 talkers - 30 days
+      Name: !Sub ALB - Top 10 TLS 1.0 talkers - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBTop100ClientsandUserAgentsforTLS1030days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT DISTINCT(elb, client_ip, ssl_protocol, user_agent), COUNT(*) AS requests
+                    FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                        AND ssl_protocol = 'TLSv1'
+                    GROUP BY (elb, client_ip, ssl_protocol, user_agent)
+                    ORDER BY requests DESC
+                    LIMIT 100
+      Description: ALB - Top 10 TLS 1.0 talkers - 30 days
+      Name: !Sub ALB - Top 100 Clients and User Agents for TLS 1.0 - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBTop10talkersRequests30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, client_ip, COUNT(*) AS requests
+                    FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                    GROUP BY elb, client_ip
+                    ORDER BY requests DESC
+                    LIMIT 10
+      Description: ALB - Top 10 talkers - Requests - 30 days
+      Name: !Sub ALB - Top 10 talkers - Requests - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBTop10talkersRequestsTimeRange:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, client_ip, COUNT(*) AS requests
+                    FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE time >= '2022-09-12T00:00:00.000000Z'
+                    AND time <= '2022-09-19T23:59:59.9999999Z'
+                    GROUP BY elb, client_ip
+                    ORDER BY requests DESC
+                    LIMIT 10
+      Description: ALB - Top 10 talkers - Requests - Time Range days
+      Name: !Sub ALB - Top 10 talkers - Requests - Time Range - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBTop10talkersMegabytes30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, client_ip, ROUND(sum(received_bytes/1000000.0),2) as client_data_received_megabytes
+                    FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                    -- WHERE time >= '2022-09-12T00:00:00.000000Z'
+                    -- AND time <= '2022-09-19T23:59:59.9999999Z'
+                    GROUP by elb, client_ip
+                    ORDER by client_data_received_megabytes DESC;
+      Description: ALB - Top 10 talkers - Megabytes - 30 days
+      Name: !Sub ALB - Top 10 talkers - Megabytes - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBAvgRequestResponsesize30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, ROUND((avg(sent_bytes)/1000.0 + avg(received_bytes)/1000.0),2) as avg_request_response_kilobytes
+                    FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                    -- WHERE time >= '2022-09-12T00:00:00.000000Z'
+                    -- AND time <= '2022-09-19T23:59:59.9999999Z'
+                    GROUP BY elb
+      Description: ALB - Avg Request/Response size - 30 days
+      Name: !Sub ALB - Avg Request/Response size - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBTargetDistribution30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, target_ip, ROUND((Count(target_ip)* 100.0 / (Select Count(*) From "tb_alb_logs_${LBLogsBucketName}" WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day AND NOT target_ip = '')),2)
+                    as backend_traffic_percentage
+                    FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                        AND NOT target_ip = ''
+                    GROUP by elb, target_ip
+                    ORDER By count() DESC;
+      Description: ALB - Target Distribution - 30 days
+      Name: !Sub ALB - Target Distribution - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBLB4xxand5xxerrors30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT * FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                        -- WHERE time >= '2022-09-12T00:00:00.000000Z'
+                        -- AND time <= '2022-09-19T23:59:59.9999999Z'
+                        -- AND elb_status_code = 400
+                        AND elb_status_code BETWEEN 400 AND 599;
+      Description: ALB - LB 4xx and 5xx errors - 30 days
+      Name: !Sub ALB - LB 4xx and 5xx errors - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBTarget4xxand5xxerrors30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT * FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                        -- WHERE time >= '2022-09-12T00:00:00.000000Z'
+                        -- AND time <= '2022-09-19T23:59:59.9999999Z'
+                        -- AND target_status_code = 400
+                        AND target_status_code BETWEEN 400 AND 599;
+      Description: ALB - Target 4xx and 5xx errors - 30 days
+      Name: !Sub ALB - Target 4xx and 5xx errors - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBClientIPsperURLhit30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT client_ip, elb, request_url, count(*) as count FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                    -- WHERE time >= '2022-09-12T00:00:00.000000Z'
+                    -- AND time <= '2022-09-19T23:59:59.9999999Z'
+                    GROUP by client_ip, elb, request_url
+                    ORDER by count DESC;
+      Description: ALB - Client IPs per URL hit - 30 days
+      Name: !Sub ALB - Client IPs per URL hit - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBTop100useragents30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, user_agent, COUNT(*) AS requests
+                    FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                    -- WHERE time >= '2022-09-12T00:00:00.000000Z'
+                    -- AND time <= '2022-09-19T23:59:59.9999999Z'
+                    GROUP BY elb, user_agent
+                    ORDER BY requests DESC
+                    LIMIT 100;
+      Description: ALB - Top 100 user-agents - 30 days
+      Name: !Sub ALB - Top 100 user-agents - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBSlowResponses30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT * FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                    -- WHERE time >= '2022-09-12T00:00:00.000000Z'
+                    -- AND time <= '2022-09-19T23:59:59.9999999Z'
+                    AND target_processing_time >= 5.0
+      Description: ALB - Slow Responses - 30 days
+      Name: !Sub ALB - Slow Responses - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBAggregatedLogInformation30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb,
+                        count(1) AS requestCount,
+                        min(time) as firstLogTime,
+                        max(time) as lastLogTime,
+                        ROUND(avg(received_bytes+sent_bytes)) AS avgTransactionSize,
+                        sum(received_bytes) as totalBytesReceived,
+                        sum(sent_bytes) as totalBytesSent,
+                        sum(received_bytes+sent_bytes) AS totalBytes
+                    FROM "tb_alb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                    -- WHERE time >= '2022-09-12T00:00:00.000000Z'
+                    -- AND time <= '2022-09-19T23:59:59.9999999Z'
+                    GROUP BY elb
+                    ORDER BY requestCount DESC limit 10;
+      Description: ALB - Aggregated Log Information - 30 days
+      Name: !Sub ALB - Aggregated Log Information - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  ALBProcessedTrafficbyELBTargetIP30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub "SELECT target_ip AS target,
+
+        \                count(target_ip) AS count,
+
+        \                sum(received_bytes) as totalRecvBytes,
+
+        \                sum(sent_bytes) as totalSentBytes,
+
+        \                avg(received_bytes)+avg(sent_bytes) AS avgTransactionSize,
+
+        \                avg(request_processing_time) as avgRequestTime,
+
+        \                avg(target_processing_time) as avgLatency,
+
+        \                avg(response_processing_time) as avgResponseTime,
+
+        \                regexp_extract(\"$path\",'((1?[0-9][0-9]?|2[0-4][0-9]|25[0-5])\\.){3}(1?[0-9][0-9]?|2[0-4][0-9]|25[0-5])') AS elb_ip,
+
+        \                approx_percentile(request_processing_time, 0.99) as P99Request,
+
+        \                approx_percentile(target_processing_time, 0.99) as P99Latency,
+
+        \                approx_percentile(response_processing_time, 0.99) as P99Response,
+
+        \                approx_percentile(request_processing_time, 0.999) as P999Request,
+
+        \                approx_percentile(target_processing_time, 0.999) as P999Latency,
+
+        \                approx_percentile(response_processing_time, 0.999) as P999Response
+
+        \            FROM \"tb_alb_logs_${LBLogsBucketName}\"
+
+        \            WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+
+        \            -- WHERE time >= '2022-09-12T00:00:00.000000Z'
+
+        \            -- AND time <= '2022-09-19T23:59:59.9999999Z'
+
+        \            GROUP BY  target_ip, regexp_extract(\"$path\",'((1?[0-9][0-9]?|2[0-4][0-9]|25[0-5])\\.){3}(1?[0-9][0-9]?|2[0-4][0-9]|25[0-5])')
+
+        \            ORDER BY count DESC limit 1000;
+
+        \            "
+      Description: ALB - Processed Traffic by ELB & Target IP - 30 days
+      Name: !Sub ALB - Processed Traffic by ELB & Target IP - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
