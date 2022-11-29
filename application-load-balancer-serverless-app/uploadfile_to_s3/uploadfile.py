@@ -3,8 +3,8 @@ import boto3
 
 
 def lambda_handler(event, context):
-	print '\n==event=='
-	print event
+	print('\n==event==')
+	print(event)
 
 	response = {
 		"statusCode": 200,
@@ -25,7 +25,7 @@ def lambda_handler(event, context):
 	imageFile.close()
 
 	if event['headers']['user-agent']=='ELB-HealthChecker/2.0':
-		print "This is a Health Check Request"
+		print("This is a Health Check Request")
 		response['body'] = 'Response to Health Check Request'
 		return response
 	if event['httpMethod']=='GET':
@@ -38,7 +38,7 @@ def lambda_handler(event, context):
 			response['body'] = "Upload to S3 -- {} successfully".format(BUCKET_NAME)
 			return response
 		except Exception as e:
-			print e
+			print(e)
 			response['body'] = "Failed to upload to S3 -- {}".format(BUCKET_NAME)
 			return response
 

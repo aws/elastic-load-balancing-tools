@@ -13,8 +13,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: An Application Load Balancer Lambda Target that returns "HelloWorld"
-      Handler: helloworld_37.lambda_handler
-      Runtime: python3.7
+      Handler: helloworld.lambda_handler
+      Runtime: python3.8
       CodeUri: ./
       Timeout: 300
 
