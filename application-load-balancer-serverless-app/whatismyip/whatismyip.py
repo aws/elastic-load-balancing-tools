@@ -6,8 +6,8 @@ TEMPLATE = './whatismyip_template.html'
 
 
 def lambda_handler(event, context):
-	print '==event=='
-	print event
+	print('==event==')
+	print(event)
 	with open(TEMPLATE, 'rw') as template:
 		template_html = template.read()
 
@@ -40,11 +40,11 @@ def lambda_handler(event, context):
 		return response_html
 
 
-	print type(template_html)
+	print(type(template_html))
 	response_html = template_html.replace("<!--whatismyip-->", data)
 
 	response['body'] = response_html
-	print response
+	print(response)
 	return response
 
 

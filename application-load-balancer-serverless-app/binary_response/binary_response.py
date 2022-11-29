@@ -2,8 +2,8 @@ import base64
 
 
 def lambda_handler(event, context):
-	print '\n==event=='
-	print event
+	print('\n==event==')
+	print(event)
 
 	response = {
 		"statusCode": 200,

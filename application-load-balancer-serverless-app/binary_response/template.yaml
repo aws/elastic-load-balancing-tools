@@ -13,8 +13,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: An Application Load Balancer Lambda Target that sends a .png image to the client.
-      Handler: binary_response_27.lambda_handler
-      Runtime: python2.7
+      Handler: binary_response.lambda_handler
+      Runtime: python3.8
       CodeUri: ./
       Timeout: 300
 
