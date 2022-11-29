@@ -1,0 +1,273 @@
+Description: Athena & Glue resources for ELB Access Logs analysis
+     
+Parameters:
+  LBLogsBucketName:
+    Type: String
+    Description: The name of the Amazon S3 bucket where the ELB Logs are located.
+
+Resources:
+  dbelblogsathenaelblogstack637ED423:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId:
+        Ref: AWS::AccountId
+      DatabaseInput:
+        Name: !Sub db_elb_logs_${AWS::StackName}
+    
+  keylogsathenaAthenaElbLogStack61CFBB92:
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Statement:
+          - Action: kms:*
+            Effect: Allow
+            Principal:
+              AWS:
+                Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - ":iam::"
+                    - Ref: AWS::AccountId
+                    - :root
+            Resource: "*"
+          - Action:
+              - kms:Encrypt
+              - kms:Decrypt
+            Effect: Allow
+            Principal:
+              AWS:
+                Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - ":iam::"
+                    - Ref: AWS::AccountId
+                    - :root
+            Resource: "*"
+        Version: "2012-10-17"
+      Description: Key for ELB Logs Athena - AthenaElbLogStack
+      EnableKeyRotation: true
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    
+  elblogsathenaAthenaElbLogStack062B4278:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              KMSMasterKeyID:
+                Fn::GetAtt:
+                  - keylogsathenaAthenaElbLogStack61CFBB92
+                  - Arn
+              SSEAlgorithm: aws:kms
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    
+  wgelblogsathenaelblogstack:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: !Sub wg_elb_logs_${AWS::StackName}
+      Description: Workgroup for ELB logs
+      RecursiveDeleteOption: true
+      State: ENABLED
+      Tags:
+        - Key: wg_elb_logs
+          Value: "True"
+      WorkGroupConfiguration:
+        PublishCloudWatchMetricsEnabled: false
+        RequesterPaysEnabled: false
+        ResultConfiguration:
+          OutputLocation:
+            Fn::Join:
+              - ""
+              - - s3://
+                - Ref: elblogsathenaAthenaElbLogStack062B4278
+                - /logs_query_results/
+    
+  tbnlblogsTableDB5703EA:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId:
+        Ref: AWS::AccountId
+      DatabaseName:
+        Ref: dbelblogsathenaelblogstack637ED423
+      TableInput:
+        Description: !Sub tb_nlb_logs_${LBLogsBucketName}
+        Name: !Sub tb_nlb_logs_${LBLogsBucketName}
+        Parameters:
+          has_encrypted_data: false
+          projection.day.digits: "2"
+          projection.day.range: 01,31
+          projection.day.type: integer
+          projection.month.digits: "2"
+          projection.month.range: 01,12
+          projection.month.type: integer
+          projection.year.digits: "4"
+          projection.year.type: integer
+          projection.year.range: 2017,2022
+          projection.enabled: "true"
+          EXTERNAL: "TRUE"
+          storage.location.template:
+            Fn::Join:
+              - ""
+              - - s3://
+                - Ref: LBLogsBucketName
+                - /AWSLogs/
+                - Ref: AWS::AccountId
+                - /elasticloadbalancing/us-east-1/${year}/${month}/${day}
+        PartitionKeys:
+          - Name: year
+            Type: int
+          - Name: month
+            Type: int
+          - Name: day
+            Type: int
+        StorageDescriptor:
+          Columns:
+            - Name: type
+              Type: string
+            - Name: version
+              Type: string
+            - Name: time
+              Type: string
+            - Name: elb
+              Type: string
+            - Name: listener
+              Type: string
+            - Name: client_ip
+              Type: string
+            - Name: client_port
+              Type: int
+            - Name: destination_ip
+              Type: string
+            - Name: destination_port
+              Type: int
+            - Name: connection_time
+              Type: double
+            - Name: tls_handshake_time
+              Type: double
+            - Name: received_bytes
+              Type: bigint
+            - Name: sent_bytes
+              Type: bigint
+            - Name: incoming_tls_alert
+              Type: string
+            - Name: chosen_cert_arn
+              Type: string
+            - Name: chosen_cert_serial
+              Type: string
+            - Name: tls_cipher
+              Type: string
+            - Name: tls_protocol_version
+              Type: string
+            - Name: tls_named_group
+              Type: string
+            - Name: domain_name
+              Type: string
+            - Name: alpn_fe_protocol
+              Type: string
+            - Name: alpn_be_protocol
+              Type: string
+            - Name: alpn_client_preference_list
+              Type: string
+          Compressed: false
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          Location:
+            Fn::Join:
+              - ""
+              - - s3://
+                - Ref: LBLogsBucketName
+                - /AWSLogs/
+                - Ref: AWS::AccountId
+                - /elasticloadbalancing/us-east-1
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            Parameters:
+              serialization.format: 1
+              input.regex: ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*)
+            SerializationLibrary: org.apache.hadoop.hive.serde2.RegexSerDe
+          StoredAsSubDirectories: false
+        TableType: EXTERNAL_TABLE
+    
+  NLBTLSVersion30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, tls_protocol_version, ROUND((COUNT(tls_protocol_version)* 100.0 / (SELECT COUNT(*) FROM "tb_nlb_logs_${LBLogsBucketName}" WHERE tls_protocol_version != '-')),2) AS percentage, COUNT() AS requests
+                    FROM "tb_nlb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                        AND NOT tls_protocol_version = '-'
+                    GROUP BY elb, tls_protocol_version
+                    ORDER BY percentage DESC
+      Description: NLB - TLS Version - 30 days
+      Name: !Sub NLB - TLS Version - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  NLBTLSCiphersuites30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, tls_cipher, ROUND((COUNT(tls_cipher)* 100.0 / (SELECT COUNT(*) FROM "tb_nlb_logs_${LBLogsBucketName}" WHERE tls_cipher != '-')),2) AS percentage, COUNT() AS requests
+                    FROM "tb_nlb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                        AND NOT tls_cipher = '-'
+                    GROUP BY elb, tls_cipher
+                    ORDER BY percentage DESC
+      Description: NLB - TLS Ciphersuites - 30 days
+      Name: !Sub NLB - TLS Ciphersuites - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  NLBTLSVersionandCiphersuitescombined30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT DISTINCT elb, tls_cipher, tls_protocol_version,  count(tls_cipher) AS requests
+                    FROM "tb_nlb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                        AND NOT tls_protocol_version = '-'
+                    GROUP BY elb, tls_cipher,tls_protocol_version
+                    ORDER BY requests DESC
+      Description: NLB - TLS Version and Ciphersuites combined - 30 days
+      Name: !Sub NLB - TLS Version and Ciphersuites combined - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  NLBTop10TLS10talkers30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, client_ip, COUNT(*) as requests
+                    FROM "tb_nlb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                        AND tls_protocol_version = 'tlsv1'
+                    GROUP BY elb, client_ip
+                    ORDER BY requests DESC
+                    LIMIT 10
+      Description: NLB - Top 10 TLS 1.0 talkers - 30 days
+      Name: !Sub NLB - Top 10 TLS 1.0 talkers - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
+
+  NLBTop10talkers30days:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database:
+        Ref: dbelblogsathenaelblogstack637ED423
+      QueryString: !Sub |-
+        SELECT elb, client_ip, COUNT(*) as requests
+                    FROM "tb_nlb_logs_${LBLogsBucketName}"
+                    WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+                    GROUP BY elb, client_ip
+                    ORDER BY requests DESC
+                    LIMIT 10
+      Description: NLB - Top 10 talkers - 30 days
+      Name: !Sub NLB - Top 10 talkers - 30 days - ${LBLogsBucketName}
+      WorkGroup: !Ref wgelblogsathenaelblogstack
