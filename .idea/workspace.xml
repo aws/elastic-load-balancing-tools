@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="331fc435-0817-4a36-8bf1-9adf6dc76482" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/proprot/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/proprot/pom.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/amazon-athena-for-elb/Analyzing_ALB_Access_Logs_with_Amazon_Athena.md" beforeDir="false" afterPath="$PROJECT_DIR$/amazon-athena-for-elb/Analyzing_ALB_Access_Logs_with_Amazon_Athena.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

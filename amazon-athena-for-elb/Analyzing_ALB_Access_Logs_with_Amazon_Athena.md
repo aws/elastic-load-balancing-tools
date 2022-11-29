@@ -35,7 +35,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS alb_logs (
     request_creation_time string,
     actions_executed string,
     redirect_url string,
-    lambda_error_reason string,
+    error_reason string,
     new_field string,
     classification string,
     classification_reason string
