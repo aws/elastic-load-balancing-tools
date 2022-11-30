@@ -55,6 +55,11 @@ region = us-east-1
 ### Configure credentials
 CDK will use the default AWS profile credentials configured in your machine, you can change it or add credentials as environment variables:
 ```
+export AWS_ACCESS_KEY_ID=<INSERT_YOUR_ACCESS_KEY_ID>
+export AWS_SECRET_ACCESS_KEY=<INSERT_YOUR_SECRET_ACCESS_KEY>
+
+Like the example below:
+
 export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
 export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 ```

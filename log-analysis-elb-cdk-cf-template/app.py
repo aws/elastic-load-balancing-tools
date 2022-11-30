@@ -20,24 +20,24 @@ app = App()
 stack = AthenaStack(app, 'AthenaElbLogStack', env={'region': region})
 stack.template_options.description = 'Athena & Glue resources for ELB Access Logs analysis'
 
-alb_bucket_name = 'elbstack1-alblogselbstack1b1061897-1wgbmokmrr0me'
-stack.athena_alb('main_logs_bucket1', alb_bucket_name)
+# Example for ALB 
+alb_bucket_name = 'my-alb-access-log-s3-bucket'
+stack.athena_alb('main_alblogs_bucket1', alb_bucket_name)
 
-# alb_bucket_name = 'elbstack1-alblogselbstack1b1061897-1wgbmokmrr0me'
-# stack.athena_alb('main_logs_bucket2', alb_bucket_name, bucket_prefix='myalb2')
+# Example for CLB 
+clb_bucket_name = 'my-clb-access-log-s3-bucket'
+stack.athena_clb('main_clblogs_bucket1', clb_bucket_name)
 
-# clb_bucket_name = 'elbstack1-clblogselbstack1569130d6-krxi15z4lzxn'
-# stack.athena_clb('main_logs', clb_bucket_name)
+# Example for NLB 
+nlb_bucket_name = 'my-nlb-access-log-s3-bucket'
+stack.athena_nlb('main_nlblogs_bucket1', nlb_bucket_name)
 
-# nlb_bucket_name = 'elbstack1-nlblogselbstack1a07805c6-1ephxwcaha4pc'
-# stack.athena_nlb('main_logs', nlb_bucket_name)
+# Example for ALB/ Cross-account, adding bucket_account parameter with the account id
+alb_bucket_name = 'my-alb-access-log-s3-bucket-in-otheraccount'
+stack.athena_alb('main_logs_cross_account', alb_bucket_name, bucket_account='123456789012')
 
-# Cross account example, add bucket_account parameter
-# alb_bucket_name = 'elbstack1-alblogselbstack1b1061897-1wgbmokmrr0me'
-# stack.athena_alb('main_logs_cross_account', alb_bucket_name, bucket_account='174029014086')
-
-# Example with specific prefix, add bucket_prefix parameter
-# alb_bucket_name = 'elbstack1-alblogselbstack1b1061897-1wgbmokmrr0me'
-# stack.athena_alb('main_logs_cross_account', alb_bucket_name, bucket_prefix='myalb1')
+# Example with specific prefix in the S3 bucket, add bucket_prefix parameter
+alb_bucket_name = 'my-alb-access-log-s3-bucket'
+stack.athena_alb('main_logs_cross_account', alb_bucket_name, bucket_prefix='myalb1')
 
 app.synth()
