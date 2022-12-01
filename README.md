@@ -18,5 +18,5 @@ Elastic Load Balancing Tools is a collection of utilities, tutorials and code sa
 [Classic Load Balancer to Network Load Balancer copy utility](network-load-balancer-copy-utility/) <br /> 
 [Classic Load Balancer Console Link utility](classic-load-balancer-consolelink-utility/) <br /> 
 [Proxy Protocol v2 implementation Java library](proprot/) <br /> 
-[Step by step for Log Analysis with Amazon Athena](log-analysis-elb/) <br /> 
+[Step by step for Log Analysis with Amazon Athena](amazon-athena-for-elb/) <br /> 
 [CDK & CloudFormation samples for Log Analysis with Amazon Athena](log-analysis-elb-cdk-cf-template/) <br /> 
