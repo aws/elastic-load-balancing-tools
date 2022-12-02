@@ -13,7 +13,7 @@ With no parameters or configuration, boto3 looks for access keys here:
 
     1. Environment variables (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)
     2. Credentials file (~/.aws/credentials or
-        C:\Users\USER_NAME\.aws\credentials)
+        C:\\Users\\USER_NAME\.aws\credentials)
     3. AWS IAM role for Amazon EC2 instance
     (http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html)
 
@@ -48,11 +48,6 @@ import botocore
 import boto3
 
 VERSION = '1.0.0'
-# raw_input is now called input in python3, this allows backward compatability
-try:
-    input = raw_input
-except NameError:
-    pass
 
 # Log will be stored in CLBtoNLBcopy.log file in the same directory as this utility script
 # logging.info("Start logging......")
@@ -192,9 +187,9 @@ def passed_softfailure_detector(elb_data):
                 print("AWS reserved tag is in use. The aws: prefix in your tag names or \
 values because it is reserved for AWS use -- \
 http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-restrictions")
-                print('Tag key: {}'.format(tag['Key']))
-                answer = input(
-                    "Do you want to proceed without AWS reserved tag? y/n ")
+                print(('Tag key: {}'.format(tag['Key'])))
+                answer = eval(input(
+                    "Do you want to proceed without AWS reserved tag? y/n "))
                 if answer.lower() == 'y':
                     elb_data['TagDescriptions'][0]['Tags'].remove(tag)
                     pass
@@ -205,13 +200,13 @@ http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-restricti
 
     # 2. If SSL health check is detected, prompt to check if continue.
     if 'SSL' in elb_data['LoadBalancerDescriptions'][0]['HealthCheck']['Target']:
-        sslhc_check = input('SSL health check is not supported for an Network Load Balancer. '
-                            'Continue with HTTPS health check? (y/n) ')
+        sslhc_check = eval(input('SSL health check is not supported for an Network Load Balancer. '
+                                 'Continue with HTTPS health check? (y/n) '))
         if sslhc_check.lower() == 'y':
             # prompt for health check path
-            ssl_hc_path = input('Please specify the path of HTTPS health check. Please note '
-                                'that Health check path must begin with a ""/"" character. '
-                                '(for example -- /index.html) ')
+            ssl_hc_path = eval(input('Please specify the path of HTTPS health check. Please note '
+                                     'that Health check path must begin with a ""/"" character. '
+                                     '(for example -- /index.html) '))
             if not ssl_hc_path.startswith('/'):
                 logger.error('Health check path must begin with a ''/'' character and \
                 can only contain printable ASCII characters, without spaces')
@@ -300,7 +295,7 @@ def get_nlb_data(elb_data, region, load_balancer_name, ssl_hc_path):
         # target group name comes from the first 18 character of the Classic Load Balancer name, \
         # "-nlb-tg-" and target group port.
         target_group['Name'] = load_balancer_name[: 18] + "-nlb-tg-" + \
-            str(listener['TargetGroup_Port'])
+                               str(listener['TargetGroup_Port'])
         # Only append unique Target Group
         if target_group not in nlb_data['target_groups']:
             nlb_data['target_groups'].append(target_group.copy())
@@ -440,7 +435,7 @@ def add_tags(nlb_data, nlb_arn, target_groups):
         for target_group in target_groups:
             try:
                 client.add_tags(ResourceArns=[target_group[
-                                'arn']], Tags=nlb_data['Tags'])
+                                                  'arn']], Tags=nlb_data['Tags'])
             except botocore.exceptions.ParamValidationError as exception:
                 logger.error("Failed to add target group tags")
                 logger.error(exception)
@@ -552,8 +547,8 @@ def main():
             nlb_data = get_nlb_data(
                 elb_data, region, load_balancer_name, ssl_hc_path)
             if args.dry_run:
-                print ("Your load balancer configuration is supported by this migration utility.")
-                print ("Your can find your Network Load Balancer's meta data in the utility log.")
+                print("Your load balancer configuration is supported by this migration utility.")
+                print("Your can find your Network Load Balancer's meta data in the utility log.")
                 logger.debug(
                     'Pass both hard failure check and soft failure check.')
                 logger.info(nlb_data)
@@ -570,7 +565,7 @@ def main():
             print(nlb_arn)
             print("Target group ARNs:")
             for target_group in target_group_arns:
-                print(target_group['arn'])
+                print((target_group['arn']))
             print("Considerations:")
             print("1. If your Classic Load Balancer is attached to an Auto Scaling group, "
                   "attach the target groups to the Auto Scaling group.")
