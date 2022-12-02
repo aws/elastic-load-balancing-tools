@@ -13,7 +13,7 @@ With no parameters or configuration, boto3 looks for access keys here:
 
     1. Environment variables (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)
     2. Credentials file (~/.aws/credentials or
-        C:\Users\USER_NAME\.aws\credentials)
+        C:\Users\\USER_NAME\.aws\credentials)
     3. AWS IAM role for Amazon EC2 instance
     (http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html)
 
@@ -47,12 +47,7 @@ import sys
 import botocore
 import boto3
 
-VERSION = '1.0.0'
-# raw_input is now called input in python3, this allows backward compatability
-try:
-    input = raw_input
-except NameError:
-    pass
+VERSION = '1.0.1'
 
 # Log will be stored in CLBtoNLBcopy.log file in the same directory as this utility script
 # logging.info("Start logging......")
@@ -78,7 +73,7 @@ def nlb_exist(load_balancer_name):
     if debug:
         logger.debug('checking if NLB exists')
     try:
-        unused_response = client.describe_load_balancers(Names=[load_balancer_name])
+        client.describe_load_balancers(Names=[load_balancer_name])
     except botocore.exceptions.ClientError as exception:
         if 'LoadBalancerNotFound' in exception.response['Error']['Code']:
             return False
@@ -99,8 +94,7 @@ def get_elb_data(elb_name, region):
             LoadBalancerNames=[elb_name])
     except botocore.exceptions.ClientError as exception:
         if 'LoadBalancerNotFound' in exception.response['Error']['Code']:
-            logger.error('Cannot find a Classic Load Balancer in region {} named {}'.format(
-                region, elb_name))
+            logger.error(f'Cannot find a Classic Load Balancer in region {region} named {elb_name}')
         else:
             logger.debug(exception)
     # Describes the attributes for the specified Classic Load Balancer.
@@ -192,9 +186,8 @@ def passed_softfailure_detector(elb_data):
                 print("AWS reserved tag is in use. The aws: prefix in your tag names or \
 values because it is reserved for AWS use -- \
 http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-restrictions")
-                print('Tag key: {}'.format(tag['Key']))
-                answer = input(
-                    "Do you want to proceed without AWS reserved tag? y/n ")
+                print(f"Tag key: {tag['Key']}")
+                answer = input("Do you want to proceed without AWS reserved tag? y/n ")
                 if answer.lower() == 'y':
                     elb_data['TagDescriptions'][0]['Tags'].remove(tag)
                     pass
@@ -211,7 +204,7 @@ http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-restricti
             # prompt for health check path
             ssl_hc_path = input('Please specify the path of HTTPS health check. Please note '
                                 'that Health check path must begin with a ""/"" character. '
-                                '(for example -- /index.html) ')
+                                '(for example -- /index.html)')
             if not ssl_hc_path.startswith('/'):
                 logger.error('Health check path must begin with a ''/'' character and \
                 can only contain printable ASCII characters, without spaces')
@@ -300,7 +293,7 @@ def get_nlb_data(elb_data, region, load_balancer_name, ssl_hc_path):
         # target group name comes from the first 18 character of the Classic Load Balancer name, \
         # "-nlb-tg-" and target group port.
         target_group['Name'] = load_balancer_name[: 18] + "-nlb-tg-" + \
-            str(listener['TargetGroup_Port'])
+                               str(listener['TargetGroup_Port'])
         # Only append unique Target Group
         if target_group not in nlb_data['target_groups']:
             nlb_data['target_groups'].append(target_group.copy())
@@ -359,9 +352,7 @@ def create_target_groups(nlb_data):
     for target_group in nlb_data['target_groups']:
         response = client.create_target_group(**target_group)
         if debug:
-            logger.debug("Create target group %s response: " %
-                         (target_group['Name']))
-            logger.debug(response)
+            logger.debug(f"Create target group {target_group['Name']} response: {response}")
         # we store some meta data about each target group, this is used binding
         # the listener to the TG
         for target_group in response['TargetGroups']:
@@ -398,9 +389,7 @@ def create_listeners(nlb_arn, nlb_data, target_groups):
                     logger.error(exception)
                     sys.exit(1)
                 if debug:
-                    logger.debug("Create listener(%s) response: " %
-                                 (listener['Port']))
-                    logger.debug(response)
+                    logger.debug(f"Create listener ({listener['Port']}) response: {response}")
                 break
 
 
@@ -440,7 +429,7 @@ def add_tags(nlb_data, nlb_arn, target_groups):
         for target_group in target_groups:
             try:
                 client.add_tags(ResourceArns=[target_group[
-                                'arn']], Tags=nlb_data['Tags'])
+                                                  'arn']], Tags=nlb_data['Tags'])
             except botocore.exceptions.ParamValidationError as exception:
                 logger.error("Failed to add target group tags")
                 logger.error(exception)
@@ -526,8 +515,7 @@ def main():
         # Verify if the input allocation IDs are not in use
         for ip_address in ip_addresses['Addresses']:
             if 'AssociationId' in ip_address:
-                logger.error('The EIPs {} ({}) are already in use'.format(
-                    ip_address['PublicIp'], ip_address['AllocationId']))
+                logger.error(f"The EIPs {ip_address['AllocationId']} ({ip_address['AllocationId']}) are already in use")
                 eipalloc.remove(ip_address['AllocationId'])
                 sys.exit(0)
             if debug:
@@ -537,8 +525,7 @@ def main():
             'No EIPs are provided. Auto-assign Public IP will be used')
     # validate that an existing NLB with same name does not exist
     if nlb_exist(load_balancer_name):
-        logger.error('You already have a load balancer with the name {} in {}'.format(
-            load_balancer_name, region))
+        logger.error(f'You already have a load balancer with the name {load_balancer_name} in {region}')
         sys.exit(1)
     # Obtain Classic Load Balancer data
     elb_data = get_elb_data(load_balancer_name, region)
@@ -552,8 +539,8 @@ def main():
             nlb_data = get_nlb_data(
                 elb_data, region, load_balancer_name, ssl_hc_path)
             if args.dry_run:
-                print ("Your load balancer configuration is supported by this migration utility.")
-                print ("Your can find your Network Load Balancer's meta data in the utility log.")
+                print("Your load balancer configuration is supported by this migration utility.")
+                print("Your can find your Network Load Balancer's meta data in the utility log.")
                 logger.debug(
                     'Pass both hard failure check and soft failure check.')
                 logger.info(nlb_data)
@@ -566,8 +553,7 @@ def main():
             if args.register_targets:
                 register_backends(target_group_arns, nlb_data)
             print("Your Network Load Balancer is ready!")
-            print("Network Load Balancer ARN:")
-            print(nlb_arn)
+            print(f"Network Load Balancer ARN: {nlb_arn}")
             print("Target group ARNs:")
             for target_group in target_group_arns:
                 print(target_group['arn'])
