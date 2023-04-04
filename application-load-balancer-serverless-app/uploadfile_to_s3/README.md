@@ -1,6 +1,6 @@
 # ALB-Lambda-Target-UploadFiletoS3
  
-A sample Lambda function template that works with Application Load Balancer. You can upload a binary file (e.g. an image or video file) to your S3 bucket with a **POST** request to trigger this Lambd function through your Application Load Balancer. 
+A sample Lambda function template that works with Application Load Balancer. You can upload a binary file (e.g. an image or video file) to your S3 bucket with a **POST** request to trigger this Lambda function through your Application Load Balancer. 
 
 
 You need to use query string parameter to specify the S3 bucket , S3 Object Key (file name) that the Lambda function can use to upload the file as an object to S3.
