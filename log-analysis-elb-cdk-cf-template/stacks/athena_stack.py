@@ -15,22 +15,22 @@ class AthenaStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
-      
+
         # Create Glue Databse
         self.name = f'elb_logs_{self.stack_name.lower()}'
         self.logs_db = glue.Database(self, f'db_{self.name}',
-                                     database_name=f'db_{self.name}')
+                                    database_name=f'db_{self.name}')
 
         # Create S3 Bucket for query results and Workgroup
         self.encryption_key = kms.Key(self,
-                                      f'key.logs.athena.{self.stack_name}-',
-                                      enable_key_rotation=True,
-                                      description=f'Key for ELB Logs Athena - {self.stack_name}')
+                                        f'key.logs.athena.{self.stack_name}-',
+                                        enable_key_rotation=True,
+                                        description=f'Key for ELB Logs Athena - {self.stack_name}')
 
         self.elb_logs_bucket = s3.Bucket(self,
-                                         f'elb.logs.athena.{self.stack_name}-',
-                                         encryption=s3.BucketEncryption.KMS,
-                                         encryption_key=self.encryption_key)
+                                        f'elb.logs.athena.{self.stack_name}-',
+                                        encryption=s3.BucketEncryption.KMS,
+                                        encryption_key=self.encryption_key)
 
         self.encryption_key.add_to_resource_policy(iam.PolicyStatement(
             effect=iam.Effect.ALLOW,
@@ -252,28 +252,37 @@ class AthenaStack(Stack):
 
         self.__create_named_query(
             f'ALB - TLS Version - 30 days - {alb_table_id}', 'ALB - TLS Version - 30 days',
-            f"""SELECT elb, ssl_protocol, ROUND((COUNT(ssl_protocol)* 100.0 / (SELECT COUNT(*) FROM "{alb_table_name}" WHERE ssl_protocol != '-')),2) AS percentage, COUNT() AS requests
-            FROM "{alb_table_name}"
-            WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+            f"""WITH var as (
+                SELECT current_timestamp - interval '30' day as intrvl
+            )
+            SELECT elb, ssl_protocol, ROUND((COUNT(ssl_protocol)* 100.0 / (SELECT COUNT(*) FROM "{alb_table_name}" WHERE ssl_protocol != '-'  AND from_iso8601_timestamp(time) > var.intrvl)),2) AS percentage, COUNT() AS requests
+            FROM "{alb_table_name}", var
+            WHERE from_iso8601_timestamp(time) > var.intrvl
                 AND NOT ssl_protocol = '-'
-            GROUP BY elb, ssl_protocol
+            GROUP BY elb, ssl_protocol, var.intrvl
             ORDER BY percentage DESC""")
 
         self.__create_named_query(
             f'ALB - TLS Ciphersuites - 30 days - {alb_table_id}', 'ALB - TLS Ciphersuites - 30 days',
-            f"""SELECT elb, ssl_cipher, ROUND((COUNT(ssl_cipher)* 100.0 / (SELECT COUNT(*) FROM "{alb_table_name}" WHERE ssl_cipher != '-')),2) AS percentage, COUNT() AS requests
-            FROM "{alb_table_name}"
-            WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+            f"""WITH var as (
+                SELECT current_timestamp - interval '30' day as intrvl
+            )
+            SELECT elb, ssl_cipher, ROUND((COUNT(ssl_cipher)* 100.0 / (SELECT COUNT(*) FROM "{alb_table_name}" WHERE ssl_cipher != '-' AND from_iso8601_timestamp(time) > var.intrvl)),2) AS percentage, COUNT() AS requests
+            FROM "{alb_table_name}", var
+            WHERE from_iso8601_timestamp(time) > var.intrvl
                 AND NOT ssl_cipher = '-'
-            GROUP BY elb, ssl_cipher
+            GROUP BY elb, ssl_cipher, var.intrvl
             ORDER BY percentage DESC""")
 
         self.__create_named_query(
             f'ALB - Request Type - 30 days - {alb_table_id}', 'ALB - Request Type - 30 days',
-            f"""SELECT elb, type, round((Count(type)* 100.0 / (Select Count(*) From "{alb_table_name}")),2) AS percentage, COUNT(type) AS requests
-            FROM "{alb_table_name}"
-            WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
-            GROUP BY  elb, type
+            f"""WITH var as (
+                SELECT current_timestamp - interval '30' day as intrvl
+            )
+            SELECT elb, type, round((Count(type)* 100.0 / (Select Count(*) From "{alb_table_name}" WHERE from_iso8601_timestamp(time) > var.intrvl)),2) AS percentage, COUNT(type) AS requests
+            FROM "{alb_table_name}", var
+            WHERE from_iso8601_timestamp(time) > var.intrvl
+            GROUP BY  elb, type, var.intrvl
             ORDER BY percentage DESC""")
 
         self.__create_named_query(
@@ -356,12 +365,15 @@ class AthenaStack(Stack):
 
         self.__create_named_query(
             f'ALB - Target Distribution - 30 days - {alb_table_id}', 'ALB - Target Distribution - 30 days',
-            f"""SELECT elb, target_ip, ROUND((Count(target_ip)* 100.0 / (Select Count(*) From "{alb_table_name}" WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day AND NOT target_ip = '')),2)
+            f"""WITH var as (
+                SELECT current_timestamp - interval '30' day as intrvl
+            )
+            SELECT elb, target_ip, ROUND((Count(target_ip)* 100.0 / (Select Count(*) From "{alb_table_name}" WHERE from_iso8601_timestamp(time) > var.intrvl AND NOT target_ip = '')),2)
             as backend_traffic_percentage
-            FROM "{alb_table_name}"
-            WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+            FROM "{alb_table_name}", var
+            WHERE from_iso8601_timestamp(time) > var.intrvl
                 AND NOT target_ip = ''
-            GROUP by elb, target_ip
+            GROUP by elb, target_ip, var.intrvl
             ORDER By count() DESC;""")
 
         self.__create_named_query(
@@ -457,7 +469,7 @@ class AthenaStack(Stack):
     def athena_clb(self, name, bucket_name, **kwargs):
         bkt_acc_id = kwargs.get('bucket_account', self.account)
         bucket_logs = s3.Bucket.from_bucket_name(self, f'clb_logs_{name}', bucket_name)
-              
+
         if 'bucket_prefix' in kwargs:
             bucket_prefix = kwargs['bucket_prefix']
             bucket_path = f'{bucket_prefix}/AWSLogs/{bkt_acc_id}/elasticloadbalancing/{self.region}'
@@ -575,20 +587,26 @@ class AthenaStack(Stack):
 
         self.__create_named_query(
             f'CLB - TLS Version - 30 days - {clb_table_id}', 'CLB - TLS Version - 30 days',
-            f"""SELECT elb, ssl_protocol, ROUND((COUNT(ssl_protocol)* 100.0 / (SELECT COUNT(*) FROM "{clb_table_name}" WHERE ssl_protocol != '-')),2) AS percentage, COUNT() AS requests
-            FROM "{clb_table_name}"
-            WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+            f"""WITH var as (
+                SELECT current_timestamp - interval '30' day as intrvl
+            )
+            SELECT elb, ssl_protocol, ROUND((COUNT(ssl_protocol)* 100.0 / (SELECT COUNT(*) FROM "{clb_table_name}" WHERE ssl_protocol != '-' AND from_iso8601_timestamp(time) > var.intrvl)),2) AS percentage, COUNT() AS requests
+            FROM "{clb_table_name}", var
+            WHERE from_iso8601_timestamp(time) > var.intrvl
                 AND NOT ssl_protocol = '-'
-            GROUP BY elb, ssl_protocol
+            GROUP BY elb, ssl_protocol, var.intrvl
             ORDER BY percentage DESC""")
 
         self.__create_named_query(
             f'CLB - TLS Ciphersuites - 30 days - {clb_table_id}', 'CLB - TLS Ciphersuites - 30 days',
-            f"""SELECT elb, ssl_cipher, ROUND((COUNT(ssl_cipher)* 100.0 / (SELECT COUNT(*) FROM "{clb_table_name}" WHERE ssl_cipher != '-')),2) AS percentage, COUNT() AS requests
-            FROM "{clb_table_name}"
-            WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+            f"""WITH var as (
+                SELECT current_timestamp - interval '30' day as intrvl
+            )
+            SELECT elb, ssl_cipher, ROUND((COUNT(ssl_cipher)* 100.0 / (SELECT COUNT(*) FROM "{clb_table_name}" WHERE ssl_cipher != '-' AND from_iso8601_timestamp(time) > var.intrvl)),2) AS percentage, COUNT() AS requests
+            FROM "{clb_table_name}", var
+            WHERE from_iso8601_timestamp(time) > var.intrvl
                 AND NOT ssl_cipher = '-'
-            GROUP BY elb, ssl_cipher
+            GROUP BY elb, ssl_cipher, var.intrvl
             ORDER BY percentage DESC""")
 
         self.__create_named_query(
@@ -640,8 +658,6 @@ class AthenaStack(Stack):
             ORDER BY requests DESC
             LIMIT 10""")
 
-
-
         self.__create_named_query(
             f'CLB - Top 10 talkers - Requests - 30 days - {clb_table_id}', 'CLB - Top 10 talkers - Requests - 30 days',
             f"""SELECT elb, client_ip, COUNT(*) AS requests
@@ -682,12 +698,15 @@ class AthenaStack(Stack):
 
         self.__create_named_query(
             f'CLB - Target Distribution - 30 days - {clb_table_id}', 'CLB - Target Distribution - 30 days',
-            f"""SELECT elb, target_ip, ROUND((Count(target_ip)* 100.0 / (Select Count(*) From "{clb_table_name}" WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day AND NOT target_ip = '')),2)
+            f"""WITH var as (
+                SELECT current_timestamp - interval '30' day as intrvl
+            )
+            SELECT elb, target_ip, ROUND((Count(target_ip)* 100.0 / (Select Count(*) From "{clb_table_name}" WHERE from_iso8601_timestamp(time) > var.intrvl AND NOT target_ip = '')),2)
             as backend_traffic_percentage
-            FROM "{clb_table_name}"
-            WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+            FROM "{clb_table_name}", var
+            WHERE from_iso8601_timestamp(time) > var.intrvl
                 AND NOT target_ip = ''
-            GROUP by elb, target_ip
+            GROUP by elb, target_ip, var.intrvl
             ORDER By count() DESC;""")
 
         self.__create_named_query(
@@ -912,20 +931,26 @@ class AthenaStack(Stack):
 
         self.__create_named_query(
             f'NLB - TLS Version - 30 days - {nlb_table_id}', 'NLB - TLS Version - 30 days',
-            f"""SELECT elb, tls_protocol_version, ROUND((COUNT(tls_protocol_version)* 100.0 / (SELECT COUNT(*) FROM "{nlb_table_name}" WHERE tls_protocol_version != '-')),2) AS percentage, COUNT() AS requests
-            FROM "{nlb_table_name}"
-            WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+            f"""WITH var as (
+                SELECT current_timestamp - interval '30' day as intrvl
+            )
+            SELECT elb, tls_protocol_version, ROUND((COUNT(tls_protocol_version)* 100.0 / (SELECT COUNT(*) FROM "{nlb_table_name}" WHERE tls_protocol_version != '-' AND from_iso8601_timestamp(time) > var.intrvl)),2) AS percentage, COUNT() AS requests
+            FROM "{nlb_table_name}", var
+            WHERE from_iso8601_timestamp(time) > var.intrvl
                 AND NOT tls_protocol_version = '-'
-            GROUP BY elb, tls_protocol_version
+            GROUP BY elb, tls_protocol_version, var.intrvl
             ORDER BY percentage DESC""")
 
         self.__create_named_query(
             f'NLB - TLS Ciphersuites - 30 days - {nlb_table_id}', 'NLB - TLS Ciphersuites - 30 days',
-            f"""SELECT elb, tls_cipher, ROUND((COUNT(tls_cipher)* 100.0 / (SELECT COUNT(*) FROM "{nlb_table_name}" WHERE tls_cipher != '-')),2) AS percentage, COUNT() AS requests
-            FROM "{nlb_table_name}"
-            WHERE from_iso8601_timestamp(time) > current_timestamp - interval '30' day
+            f"""WITH var as (
+                SELECT current_timestamp - interval '30' day as intrvl
+            )
+            SELECT elb, tls_cipher, ROUND((COUNT(tls_cipher)* 100.0 / (SELECT COUNT(*) FROM "{nlb_table_name}" WHERE tls_cipher != '-' AND from_iso8601_timestamp(time) > var.intrvl)),2) AS percentage, COUNT() AS requests
+            FROM "{nlb_table_name}", var
+            WHERE from_iso8601_timestamp(time) > var.intrvl
                 AND NOT tls_cipher = '-'
-            GROUP BY elb, tls_cipher
+            GROUP BY elb, tls_cipher, var.intrvl
             ORDER BY percentage DESC""")
 
         self.__create_named_query(
