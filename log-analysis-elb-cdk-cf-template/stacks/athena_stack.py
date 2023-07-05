@@ -19,18 +19,18 @@ class AthenaStack(Stack):
         # Create Glue Databse
         self.name = f'elb_logs_{self.stack_name.lower()}'
         self.logs_db = glue.Database(self, f'db_{self.name}',
-                                    database_name=f'db_{self.name}')
+                                     database_name=f'db_{self.name}')
 
         # Create S3 Bucket for query results and Workgroup
         self.encryption_key = kms.Key(self,
-                                        f'key.logs.athena.{self.stack_name}-',
-                                        enable_key_rotation=True,
-                                        description=f'Key for ELB Logs Athena - {self.stack_name}')
+                                      f'key.logs.athena.{self.stack_name}-',
+                                      enable_key_rotation=True,
+                                      description=f'Key for ELB Logs Athena - {self.stack_name}')
 
         self.elb_logs_bucket = s3.Bucket(self,
-                                        f'elb.logs.athena.{self.stack_name}-',
-                                        encryption=s3.BucketEncryption.KMS,
-                                        encryption_key=self.encryption_key)
+                                         f'elb.logs.athena.{self.stack_name}-',
+                                         encryption=s3.BucketEncryption.KMS,
+                                         encryption_key=self.encryption_key)
 
         self.encryption_key.add_to_resource_policy(iam.PolicyStatement(
             effect=iam.Effect.ALLOW,
@@ -80,14 +80,13 @@ class AthenaStack(Stack):
 
     def __create_prepared_statement(self, name, description, statement):
         # Statement name does not support '-' character
-        prepared_statement = athena.CfnPreparedStatement(self, name,
-            query_statement=statement,
-            statement_name=name.replace('-','_'),
-            work_group=self.work_group.name,
-            description=description
-        )
-        prepared_statement.node.add_dependency(self.work_group)
-        return prepared_statement
+        ps = athena.CfnPreparedStatement(self, name,
+                                         query_statement=statement,
+                                         statement_name=name.replace('-', '_'),
+                                         work_group=self.work_group.name,
+                                         description=description)
+        ps.node.add_dependency(self.work_group)
+        return ps
 
     def athena_alb(self, name, bucket_name, **kwargs):
         bkt_acc_id = kwargs.get('bucket_account', self.account)
@@ -97,14 +96,13 @@ class AthenaStack(Stack):
             bucket_prefix = kwargs['bucket_prefix']
             bucket_path = f'{bucket_prefix}/AWSLogs/{bkt_acc_id}/elasticloadbalancing/{self.region}'
             alb_table_id = f'{bucket_name}_{bucket_prefix}'
-            alb_table_id=alb_table_id.replace('/','_')
+            alb_table_id = alb_table_id.replace('/', '_')
         else:
             bucket_path = f'AWSLogs/{bkt_acc_id}/elasticloadbalancing/{self.region}'
             alb_table_id = f'{bucket_name}'
 
         alb_table_id = alb_table_id.lower()
         alb_table_name = f'tb_alb_logs_{alb_table_id}'
-        
 
         logs_table = glue.Table(
             self, alb_table_name,
@@ -316,7 +314,7 @@ class AthenaStack(Stack):
 
         self.__create_prepared_statement(
             f'alb_tls_version_{alb_table_id}',
-            f'ALB TLS Version Distribution',
+            'ALB TLS Version Distribution',
             f"""SELECT elb, ssl_protocol, COUNT() AS requests
             FROM "{alb_table_name}"
             WHERE from_iso8601_timestamp(time) > date_add('day', ?, current_timestamp)
@@ -403,7 +401,6 @@ class AthenaStack(Stack):
             GROUP by client_ip, elb, request_url
             ORDER by count DESC;""")
 
-
         self.__create_named_query(
             f'ALB - Top 100 user-agents - 30 days - {alb_table_id}', 'ALB - Top 100 user-agents - 30 days',
             f"""SELECT elb, user_agent, COUNT(*) AS requests
@@ -465,7 +462,6 @@ class AthenaStack(Stack):
             ORDER BY count DESC limit 1000;
             """)
 
-
     def athena_clb(self, name, bucket_name, **kwargs):
         bkt_acc_id = kwargs.get('bucket_account', self.account)
         bucket_logs = s3.Bucket.from_bucket_name(self, f'clb_logs_{name}', bucket_name)
@@ -474,14 +470,13 @@ class AthenaStack(Stack):
             bucket_prefix = kwargs['bucket_prefix']
             bucket_path = f'{bucket_prefix}/AWSLogs/{bkt_acc_id}/elasticloadbalancing/{self.region}'
             clb_table_id = f'{bucket_name}_{bucket_prefix}'
-            clb_table_id=clb_table_id.replace('/','_')
+            clb_table_id = clb_table_id.replace('/', '_')
         else:
             bucket_path = f'AWSLogs/{bkt_acc_id}/elasticloadbalancing/{self.region}'
             clb_table_id = bucket_name
 
         clb_table_id = clb_table_id.lower()
         clb_table_name = f'tb_clb_logs_{clb_table_id}'
-
 
         logs_table = glue.Table(
             self, clb_table_name,
@@ -640,7 +635,7 @@ class AthenaStack(Stack):
 
         self.__create_prepared_statement(
             f'clb_tls_version_{clb_table_id}',
-            f'CLB TLS Version Distribution',
+            'CLB TLS Version Distribution',
             f"""SELECT elb, ssl_protocol, COUNT() AS requests
             FROM "{clb_table_name}"
             WHERE from_iso8601_timestamp(time) > date_add('day', ?, current_timestamp)
@@ -736,7 +731,6 @@ class AthenaStack(Stack):
             GROUP by client_ip, elb, request_url
             ORDER by count DESC;""")
 
-
         self.__create_named_query(
             f'CLB - Top 100 user-agents - 30 days - {clb_table_id}', 'CLB - Top 100 user-agents - 30 days',
             f"""SELECT elb, user_agent, COUNT(*) AS requests
@@ -806,14 +800,13 @@ class AthenaStack(Stack):
             bucket_prefix = kwargs['bucket_prefix']
             bucket_path = f'{bucket_prefix}/AWSLogs/{bkt_acc_id}/elasticloadbalancing/{self.region}'
             nlb_table_id = f'{bucket_name}_{bucket_prefix}'
-            nlb_table_id=nlb_table_id.replace('/','_')
+            nlb_table_id = nlb_table_id.replace('/', '_')
         else:
             bucket_path = f'AWSLogs/{bkt_acc_id}/elasticloadbalancing/{self.region}'
             nlb_table_id = bucket_name
 
         nlb_table_id = nlb_table_id.lower()
         nlb_table_name = f'tb_nlb_logs_{nlb_table_id}'
-
 
         logs_table = glue.Table(
             self, nlb_table_name,
@@ -974,7 +967,7 @@ class AthenaStack(Stack):
 
         self.__create_prepared_statement(
             f'nlb_tls_version_{nlb_table_id}',
-            f'NLB TLS Version Distribution',
+            'NLB TLS Version Distribution',
             f"""SELECT elb, tls_protocol_version, COUNT() AS requests
             FROM "{nlb_table_name}"
             WHERE from_iso8601_timestamp(time) > date_add('day', ?, current_timestamp)
