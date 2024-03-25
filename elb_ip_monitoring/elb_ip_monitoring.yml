@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to create a DNS record with a weighted policy pointing to two ELBs.
+
+Parameters:
+  ELBName:
+    Description: DNS Name of Elastic Load Balancer (e.g. my-load-balancer1-1234567890.us-west-2.elb.amazonaws.com)
+    Type: String
+    MinLength: '1'
+  CloudWatchNamespace:
+    Description: CloudWatch Namespace (e.g. ELBIpMonitoring)
+    Type: String
+    MinLength: '1'
+    Default: 'ELBIpMonitoring'
+
+Resources:
+  LambdaRoleELBDNS:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub LambdaRoleELBDNS-${AWS::StackName}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+      - PolicyName: PutMetricDataPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - cloudwatch:PutMetricData
+            Resource: '*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  LambdaELBDNSResolution:
+    Type: AWS::Lambda::Function
+    Properties:
+      Environment:
+        Variables:
+          ELB: !Ref ELBName
+          NAMESPACE: !Ref CloudWatchNamespace
+      Code:
+        ZipFile: |
+            import os
+            import socket
+            import boto3
+            import botocore
+
+            elb_name = os.environ['ELB']
+            elb_short_name = elb_name.split('.')[0]
+            cw_namespace = os.environ['NAMESPACE']
+
+
+            def dns_resolution(elb_name):
+                try:
+                    elb_dns_all = f"all.{elb_name}"
+                    result = socket.gethostbyname_ex(elb_dns_all)
+                    address_list = result[2]
+                    return len(address_list)
+                except socket.gaierror as e:
+                    print(f"An error occurred: {e}")
+                    return 0
+
+            def put_metric_to_cloudwatch(value):
+                cloudwatch = boto3.client('cloudwatch')
+
+                metric_data = {
+                    'MetricName': 'IP_Count',
+                    'Dimensions': [
+                        {
+                            'Name': 'Per ELB',
+                            'Value': elb_short_name
+                        },
+                    ],
+                    'Value': value
+                }
+
+                try:
+                    cloudwatch.put_metric_data(
+                        Namespace=cw_namespace,
+                        MetricData=[metric_data]
+                    )
+                    print(f"Metric data sent: {value}")
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+
+            def lambda_handler(event, context):
+
+              results_count = dns_resolution(elb_name)
+              if results_count > 0:
+                  put_metric_to_cloudwatch(results_count)
+              else:
+                  print(f"No DNS results for {elb_name}")
+
+      Handler: "index.lambda_handler"
+      Runtime: python3.11
+      Timeout: 10
+      Role: !GetAtt LambdaRoleELBDNS.Arn
+
+  ScheduledRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "ScheduledRule"
+      ScheduleExpression: "rate(60 minutes)"
+      State: "ENABLED"
+      Targets:
+        -
+          Arn:
+            Fn::GetAtt:
+              - 'LambdaELBDNSResolution'
+              - "Arn"
+          Id: "TargetFunctionV1"
+
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: "LambdaELBDNSResolution"
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn:
+        Fn::GetAtt:
+          - "ScheduledRule"
+          - "Arn"
