@@ -1,0 +1,208 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to create a DNS record with a weighted policy pointing to two ELBs.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      -
+        Label:
+          default: "First ELB"
+        Parameters:
+          - ELB1DNSName
+          - ELB1Type
+          - ELB1Weight
+      -
+        Label:
+          default: "Second ELB"
+        Parameters:
+          - ELB2DNSName
+          - ELB2Type
+          - ELB2Weight
+      -
+        Label:
+          default: "Route 53 Hosted Zone details"
+        Parameters:
+          - DNSHostedZoneId
+          - DNSRecordName
+
+
+Parameters:
+  ELB1DNSName:
+    Description: DNS Name of Elastic Load Balancer 1 (e.g. my-load-balancer1-1234567890.us-west-2.elb.amazonaws.com)
+    Type: String
+    MinLength: '1'
+  ELB1Type:
+    Description: Type of Elastic Load Balancer 1
+    Type: String
+    Default: "Application/Classic"
+    AllowedValues:
+      - "Application/Classic"
+      - "Network"
+  ELB1Weight:
+    Description: Weight for Elastic Load Balancer 1
+    Type: Number
+    MinValue: 0
+    MaxValue: 255
+    Default: 50
+  ELB2DNSName:
+    Description: DNS Name of Elastic Load Balancer 2 (e.g. my-load-balancer2-0987654321.us-west-2.elb.amazonaws.com)
+    Type: String
+    MinLength: '1'
+  ELB2Type:
+    Description: Type of Elastic Load Balancer 2
+    Type: String
+    Default: "Application/Classic"
+    AllowedValues:
+      - "Application/Classic"
+      - "Network"
+  ELB2Weight:
+    Description: Weight for Elastic Load Balancer 2
+    Type: Number
+    MinValue: 0
+    MaxValue: 255
+    Default: 50
+  DNSHostedZoneId:
+    Description: The ID of the Route 53 hosted zone (e.g. Z1R8UBAEXAMPLE)
+    Type: String
+  DNSRecordName:
+    Description: The DNS record name to be used. It has to be a new record and the domain name has belong to the hosted zone provided in the previous parameter (e.g. my-shard.example.com)
+    Type: String
+
+Mappings:
+  ELBHostedZoneMapping:
+    us-east-2:
+      "ALBHostedZoneID": "Z3AADJGX6KTTL2"
+      "NLBHostedZoneID": "ZLMOA37VPKANP"
+    us-east-1:
+      "ALBHostedZoneID": "Z35SXDOTRQ7X7K"
+      "NLBHostedZoneID": "Z26RNL4JYFTOTI"
+    us-west-1:
+      "ALBHostedZoneID": "Z368ELLRRE2KJ0"
+      "NLBHostedZoneID": "Z24FKFUX50B4VW"
+    us-west-2:
+      "ALBHostedZoneID": "Z1H1FL5HABSF5"
+      "NLBHostedZoneID": "Z18D5FSROUN65G"
+    af-south-1:
+      "ALBHostedZoneID": "Z268VQBMOI5EKX"
+      "NLBHostedZoneID": "Z203XCE67M25HM"
+    ap-east-1:
+      "ALBHostedZoneID": "Z3DQVH9N71FHZ0"
+      "NLBHostedZoneID": "Z12Y7K3UBGUAD1"
+    ap-south-2:
+      "ALBHostedZoneID": "Z0173938T07WNTVAEPZN"
+      "NLBHostedZoneID": "Z0711778386UTO08407HT"
+    ap-southeast-3:
+      "ALBHostedZoneID": "Z08888821HLRG5A9ZRTER"
+      "NLBHostedZoneID": "Z01971771FYVNCOVWJU1G"
+    ap-southeast-4:
+      "ALBHostedZoneID": "Z09517862IB2WZLPXG76F"
+      "NLBHostedZoneID": "Z01156963G8MIIL7X90IV"
+    ap-south-1:
+      "ALBHostedZoneID": "ZP97RAFLXTNZK"
+      "NLBHostedZoneID": "ZVDDRBQ08TROA"
+    ap-northeast-3:
+      "ALBHostedZoneID": "Z5LXEXXYW11ES"
+      "NLBHostedZoneID": "Z1GWIQ4HH19I5X"
+    ap-northeast-2:
+      "ALBHostedZoneID": "ZWKZPGTI48KDX"
+      "NLBHostedZoneID": "ZIBE1TIR4HY56"
+    ap-southeast-1:
+      "ALBHostedZoneID": "Z1LMS91P8CMLE"
+      "NLBHostedZoneID": "ZKVM4W9LS7TM"
+    ap-southeast-2:
+      "ALBHostedZoneID": "Z1GM3OXH4ZPM65"
+      "NLBHostedZoneID": "ZCT6FZBF4DROD"
+    ap-northeast-1:
+      "ALBHostedZoneID": "Z14GRHDCWA56QT"
+      "NLBHostedZoneID": "Z31USIVHYNEOWT"
+    ca-central-1:
+      "ALBHostedZoneID": "ZQSVJUPU6J1EY"
+      "NLBHostedZoneID": "Z2EPGBW3API2WT"
+    cn-north-1:
+      "ALBHostedZoneID": "Z1GDH35T77C1KE"
+      "NLBHostedZoneID": "Z3QFB96KMJ7ED6"
+    cn-northwest-1:
+      "ALBHostedZoneID": "ZM7IZAIOVVDZF"
+      "NLBHostedZoneID": "ZQEIKTCZ8352D"
+    eu-central-1:
+      "ALBHostedZoneID": "Z215JYRZR1TBD5"
+      "NLBHostedZoneID": "Z3F0SRJ5LGBH90"
+    eu-west-1:
+      "ALBHostedZoneID": "Z32O12XQLNTSW2"
+      "NLBHostedZoneID": "Z2IFOLAFXWLO4F"
+    eu-west-2:
+      "ALBHostedZoneID": "ZHURV8PSTC4K8"
+      "NLBHostedZoneID": "ZD4D7Y8KGAS4G"
+    eu-south-1:
+      "ALBHostedZoneID": "Z3ULH7SSC9OV64"
+      "NLBHostedZoneID": "Z23146JA1KNAFP"
+    eu-west-3:
+      "ALBHostedZoneID": "Z3Q77PNBQS71R4"
+      "NLBHostedZoneID": "Z1CMS0P5QUZ6D5"
+    eu-south-2:
+      "ALBHostedZoneID": "Z0956581394HF5D5LXGAP"
+      "NLBHostedZoneID": "Z1011216NVTVYADP1SSV"
+    eu-north-1:
+      "ALBHostedZoneID": "Z23TAZ6LKFMNIO"
+      "NLBHostedZoneID": "Z1UDT6IFJ4EJM"
+    eu-central-2:
+      "ALBHostedZoneID": "Z06391101F2ZOEP8P5EB3"
+      "NLBHostedZoneID": "Z02239872DOALSIDCX66S"
+    il-central-1:
+      "ALBHostedZoneID": "Z09170902867EHPV2DABU"
+      "NLBHostedZoneID": "Z0313266YDI6ZRHTGQY4"
+    me-south-1:
+      "ALBHostedZoneID": "ZS929ML54UICD"
+      "NLBHostedZoneID": "Z3QSRYVP46NYYV"
+    me-central-1:
+      "ALBHostedZoneID": "Z08230872XQRWHG2XF6I"
+      "NLBHostedZoneID": "Z00282643NTTLPANJJG2P"
+    sa-east-1:
+      "ALBHostedZoneID": "Z2P70J7HTTTPLU"
+      "NLBHostedZoneID": "ZTK26PT1VY4CU"
+    us-gov-east-1:
+      "ALBHostedZoneID": "Z166TLBEWOO7G0"
+      "NLBHostedZoneID": "Z1ZSMQQ6Q24QQ8"
+    us-gov-west-1:
+      "ALBHostedZoneID": "Z33AYJ8TM3BH4J"
+      "NLBHostedZoneID": "ZMG1MZ2THAWF1"
+
+Conditions:
+  IsNLB1: !Equals [!Ref ELB1Type, "Network"]
+  IsNLB2: !Equals [!Ref ELB2Type, "Network"]
+
+Resources:
+  ELB1DNSRecord:
+    Type: 'AWS::Route53::RecordSet'
+    Properties:
+      HostedZoneId: !Ref DNSHostedZoneId
+      Name: !Ref DNSRecordName
+      Type: A
+      AliasTarget:
+        DNSName: !Ref ELB1DNSName
+        EvaluateTargetHealth: true
+        HostedZoneId: 
+          !If
+            - IsNLB1
+            - !FindInMap [ELBHostedZoneMapping, !Ref "AWS::Region", "NLBHostedZoneID"]  # https://docs.aws.amazon.com/general/latest/gr/elb.html
+            - !FindInMap [ELBHostedZoneMapping, !Ref "AWS::Region", "ALBHostedZoneID"]  # https://docs.aws.amazon.com/general/latest/gr/elb.html
+      SetIdentifier: ELB1
+      Weight: !Ref ELB1Weight
+
+  ELB2DNSRecord:
+    Type: 'AWS::Route53::RecordSet'
+    Properties:
+      HostedZoneId: !Ref DNSHostedZoneId
+      Name: !Ref DNSRecordName
+      Type: A
+      AliasTarget:
+        DNSName: !Ref ELB2DNSName
+        EvaluateTargetHealth: true
+        HostedZoneId: 
+          !If
+            - IsNLB2
+            - !FindInMap [ELBHostedZoneMapping, !Ref "AWS::Region", "NLBHostedZoneID"]  # https://docs.aws.amazon.com/general/latest/gr/elb.html
+            - !FindInMap [ELBHostedZoneMapping, !Ref "AWS::Region", "ALBHostedZoneID"]  # https://docs.aws.amazon.com/general/latest/gr/elb.html
+
+      SetIdentifier: ELB2
+      Weight: !Ref ELB2Weight
