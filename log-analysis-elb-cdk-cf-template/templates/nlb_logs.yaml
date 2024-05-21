@@ -106,7 +106,7 @@ Resources:
           projection.month.type: integer
           projection.year.digits: "4"
           projection.year.type: integer
-          projection.year.range: 2017,2022
+          projection.year.range: 2017,2035
           projection.enabled: "true"
           EXTERNAL: "TRUE"
           storage.location.template:
