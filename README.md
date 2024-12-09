@@ -21,4 +21,5 @@ Elastic Load Balancing Tools is a collection of utilities, tutorials and code sa
 [Step by step for Log Analysis with Amazon Athena](amazon-athena-for-elb/) <br /> 
 [CDK & CloudFormation samples for Log Analysis with Amazon Athena](log-analysis-elb-cdk-cf-template/) <br /> 
 [CloudFormation template for IP monitoring for Classic and Application Load Balancers](elb_ip_monitoring/) <br /> 
-[CloudFormation template for Sharding](sharding/) <br /> 
+[CloudFormation template for Sharding](sharding/) <br />
+[LCU reservation scheduler](scheduler-lcu-reservation/)<br />
