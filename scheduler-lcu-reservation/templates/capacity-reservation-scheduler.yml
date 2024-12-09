@@ -1,0 +1,329 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation Template for ELB Capacity Unit Reservation scheduling
+
+Parameters:
+  LoadBalancerArn:
+    Type: String
+    Description: The ARN of the ALB or NLB to reserve capacity
+    AllowedPattern: '^arn:(aws|aws-cn|aws-us-gov):elasticloadbalancing:[a-z0-9-]+:\d{12}:loadbalancer/(app|net)/[a-zA-Z0-9-]+/[a-zA-Z0-9-]+$'
+  ProvisionedCapacityScheduleStart:
+    Type: String
+    Default: "0 12 * * ? *"
+    Description: The schedule in Cron format - https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-scheduled-rule-pattern.html
+  ProvisionedCapacityScheduleStop:
+    Type: String
+    Default: "0 13 * * ? *"
+    Description: The schedule in Cron format - https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-scheduled-rule-pattern.html
+  StartDate:
+    Type: String
+    Description: The date, in UTC (yyyy-MM-ddTHH:mm:ss.SSSZ), before which the schedule will start (immediate if blank)
+  EndDate:
+    Type: String
+    Description: The date, in UTC (yyyy-MM-ddTHH:mm:ss.SSSZ), before which the schedule will end (ignored if blank)
+  CapacityReservation:
+    Type: Number
+    Default: 100
+    MinValue: 100 # min NLB=5500 ALB=100
+    MaxValue: 99999 # max NLB=15000 ALB=1500
+    Description: Ammount of Load Balancer Capacity Units (LCU) to provision
+  CapacityReset:
+    Type: Number
+    Default: 0
+    MinValue: 0 # min NLB=5500 ALB=100
+    MaxValue: 99999 # max NLB=15000 ALB=1500
+    Description: Set capacity reservation to original value (or 0 to reset)
+  TimeZone:
+    Type: String
+    Description: Time Zone - https://www.iana.org/time-zones
+    Default: UTC
+  ScheduleGroup:
+    Type: String
+    Description: Specify ScheduleGroup (if left blank, one will be created)
+  Tag:
+    Type: String
+    Description: Tag to associate with resources. Thee ELB name will be used if left blank.
+  NotificationEmail:
+    Type: String
+    Description: Email for notifications (via SNS)
+    AllowedPattern: '^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+
+Conditions:
+  CreateScheduleGroup: !Equals [!Ref ScheduleGroup, ""]
+  HasNotificationEmail: !Not [!Equals ['', !Ref NotificationEmail]]
+  HasTag: !Not [!Equals ['', !Ref Tag]]
+  HasStartDate: !Not [!Equals ['', !Ref StartDate]]
+  HasEndDate: !Not [!Equals ['', !Ref EndDate]]
+
+Resources: 
+
+  EventBridgeSchedulerExecRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 
+        - "${AWS::StackName}-eventbridge-${LoadBalancerName}"
+        - LoadBalancerName: !Select [2, !Split ["/", !Select [5, !Split [":", !Ref LoadBalancerArn]]]]
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - scheduler.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Description: Execution role for the EventBridge scheduler lambda target invocation.
+      Policies:
+      - PolicyName: InvokeSchedulerLambda
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+              - 'lambda:InvokeFunction'
+              Resource:
+              - !GetAtt LambdaSetProvisionCapacity.Arn
+      Tags:
+        - Key: LoadBalancerName
+          Value: !Sub 
+            - "${AWS::StackName}-${LoadBalancerName}"
+            - LoadBalancerName: !Select [2, !Split ["/", !Select [5, !Split [":", !Ref LoadBalancerArn]]]]
+
+  ProvisionCapacityScheduleGroup:
+    Condition: CreateScheduleGroup
+    Type: AWS::Scheduler::ScheduleGroup
+    Properties:
+      Name: !Sub ${AWS::StackName}-ScheduleGroup
+
+  ProvisionCapacityScheduleStart:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub ${AWS::StackName}-PCSchedulerStart
+      Description: This schedule runs the Lambda function to start LCU Capacity Reservation
+      StartDate: !If [HasStartDate, !Ref StartDate, !Ref "AWS::NoValue"]
+      EndDate: !If [HasEndDate, !Ref EndDate, !Ref "AWS::NoValue"]
+      FlexibleTimeWindow:
+        Mode: "FLEXIBLE"
+        MaximumWindowInMinutes: 1
+      GroupName: !If [CreateScheduleGroup, !Ref ProvisionCapacityScheduleGroup, !Ref ScheduleGroup]
+      ScheduleExpression: !Sub "cron(${ProvisionedCapacityScheduleStart})"
+      ScheduleExpressionTimezone: !Ref TimeZone
+      State: ENABLED
+      Target:
+        Arn: !GetAtt LambdaSetProvisionCapacity.Arn
+        Input: !Sub '{"ELB": "${LoadBalancerArn}", "DesiredLCU": ${CapacityReservation}}'
+        RoleArn: !GetAtt EventBridgeSchedulerExecRole.Arn
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 60
+          MaximumRetryAttempts: 10
+
+  ProvisionCapacityScheduleStop:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub ${AWS::StackName}-PCSchedulerStop
+      Description: This schedule runs the Lambda function to stop LCU Capacity Reservation
+      StartDate: !If [HasStartDate, !Ref StartDate, !Ref "AWS::NoValue"]
+      EndDate: !If [HasEndDate, !Ref EndDate, !Ref "AWS::NoValue"]
+      FlexibleTimeWindow:
+        Mode: "FLEXIBLE"
+        MaximumWindowInMinutes: 1
+      GroupName: !If [CreateScheduleGroup, !Ref ProvisionCapacityScheduleGroup, !Ref ScheduleGroup]
+      ScheduleExpression: !Sub "cron(${ProvisionedCapacityScheduleStop})"
+      ScheduleExpressionTimezone: !Ref TimeZone
+      State: ENABLED
+      Target:
+        Arn: !GetAtt LambdaSetProvisionCapacity.Arn
+        Input: !Sub '{"ELB": "${LoadBalancerArn}", "DesiredLCU":${CapacityReset}}'
+        RoleArn: !GetAtt EventBridgeSchedulerExecRole.Arn
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 60
+          MaximumRetryAttempts: 10
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 
+        - "${AWS::StackName}-lambdaexec-${LoadBalancerName}"
+        - LoadBalancerName: !Select [2, !Split ["/", !Select [5, !Split [":", !Ref LoadBalancerArn]]]]
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+      - PolicyName: LambdaExecutionPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+          - Effect: Allow
+            Action:
+            - elasticloadbalancing:ModifyCapacityReservation
+            Resource: !Ref LoadBalancerArn
+          - Effect: Allow
+            Action:
+            - elasticloadbalancing:DescribeCapacityReservation
+            Resource: '*' 
+          - !If 
+            - HasNotificationEmail
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref NotificationTopic
+            - !Ref AWS::NoValue
+
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasNotificationEmail
+    Properties:
+      DisplayName: !Sub 
+        - "${AWS::StackName}-${LoadBalancerName}"
+        - LoadBalancerName: !Select [2, !Split ["/", !Select [5, !Split [":", !Ref LoadBalancerArn]]]]
+      TopicName: !Sub 
+        - "${AWS::StackName}-${LoadBalancerName}"
+        - LoadBalancerName: !Select [2, !Split ["/", !Select [5, !Split [":", !Ref LoadBalancerArn]]]]
+      Subscription:
+        - Endpoint: !Ref NotificationEmail
+          Protocol: email
+      Tags:
+        - Key: LoadBalancerName
+          Value: !If [HasTag, !Ref Tag, !Select [2, !Split ["/", !Select [5, !Split [":", !Ref LoadBalancerArn]]]]]
+
+  LambdaSetProvisionCapacity:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 
+        - "${AWS::StackName}-${LoadBalancerName}"
+        - LoadBalancerName: !Select [2, !Split ["/", !Select [5, !Split [":", !Ref LoadBalancerArn]]]]
+      Description: !Sub 
+        - "Reserved Capacity function for ELB: ${LoadBalancerName}"
+        - LoadBalancerName: !Select [5, !Split [":", !Ref LoadBalancerArn]]
+      Code:
+        ZipFile: |
+          import os
+          import json
+          import logging
+          import time
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          # Temporary until Lambda runtime supports newer boto3 versions
+          def _install_boto3():
+              import sys
+              os.system("mkdir -p /tmp/packages")
+              logger.info("Installling boto3")
+              os.system(
+                  f"{sys.executable} -m pip install "
+                  f"--no-cache-dir --target /tmp/packages "
+                  f"--only-binary :all: --no-color "
+                  f"--no-warn-script-location --upgrade boto3==1.35.68")
+              sys.path.insert(0, "/tmp/packages")
+
+          def lambda_handler(event, context):
+
+              _install_boto3()
+              import boto3
+              logger.info(f"event: {event}")
+              logger.info(f"boto3 version: {boto3.__version__}")
+
+              # Extract parameters from the event
+              elb_arn = event.get('ELB')
+              desired_lcu = event.get('DesiredLCU')
+
+              # Get SNS Topic ARN from environment variable 
+              sns_topic_arn = os.environ.get('SNS_TOPIC_ARN')
+
+              reset_capacity_reservation = True if desired_lcu == 0 else False
+
+              elbv2_client = boto3.client('elbv2')
+              sns_client = boto3.client('sns')
+
+              try:
+                  # Create base parameters
+                  params = {
+                      'LoadBalancerArn': elb_arn,
+                      'ResetCapacityReservation': reset_capacity_reservation
+                  }
+
+                  # Add MinimumLoadBalancerCapacity only if desired_lcu is not 0
+                  if desired_lcu != 0:
+                      params['MinimumLoadBalancerCapacity'] = {
+                          'CapacityUnits': desired_lcu
+                      }
+
+                  # Make the API call with the constructed parameters
+                  response = elbv2_client.modify_capacity_reservation(**params)
+
+                  # Wait for capacity reservation to be provisioned or failed
+                  while True:
+                      response = elbv2_client.describe_capacity_reservation(
+                          LoadBalancerArn=elb_arn
+                      )
+
+                      logger.info(f"describe_capacity_reservation response: {response}")
+
+                      if response['CapacityReservationState']:
+                          status_code = response['CapacityReservationState'][0]['State']['Code']
+                   
+                          if status_code in ['provisioned', 'failed']:
+                              break
+                                          
+                      time.sleep(5)
+
+                  if status_code == 'provisioned':
+                      status = "SUCCESS"
+                      message = f"Successfully modified and provisioned capacity reservation for ELB: {elb_arn}"
+                  else:
+                      status = "FAILURE" 
+                      message = f"Failed to provision capacity reservation for ELB: {elb_arn}"
+
+                  logger.info(f"Status: {status}, Message: {message}")
+                      
+              except Exception as e:
+                  status = "FAILURE"
+                  message = f"Failed to modify capacity reservation for ELB: {elb_arn}. Error: {str(e)}"
+                  logger.info(f"Status: {status}, Message: {message}")
+
+              # Prepare SNS message
+              sns_message = {
+                  "status": status,
+                  "message": message,
+                  "elb_arn": elb_arn,
+                  "desired_lcu": desired_lcu
+              }
+              
+              # Send SNS notification if SNS_TOPIC_ARN is provided
+              if sns_topic_arn:
+                  try:
+                      sns_client.publish(
+                          TopicArn=sns_topic_arn,
+                          Message=json.dumps(sns_message),
+                          Subject=f"ELB Capacity Modification {status}"
+                      )
+                      logger.info(f"SNS notification sent: {json.dumps(sns_message)}")
+                  except Exception as e:
+                      logger.info(f"Failed to send SNS notification. Error: {str(e)}")
+              else:
+                  logger.info("SNS_TOPIC_ARN not provided. Skipping SNS notification.")
+
+              return {
+                  "statusCode": 200 if status == "SUCCESS" else 500,
+                  "body": json.dumps({"status": status, "message": message})
+              }
+      Handler: "index.lambda_handler"
+      Runtime: python3.13
+      Timeout: 900
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !If [HasNotificationEmail, !Ref NotificationTopic, !Ref "AWS::NoValue"]
+      Tags:
+        - Key: LoadBalancerName
+          Value: !If [HasTag, !Ref Tag, !Select [2, !Split ["/", !Select [5, !Split [":", !Ref LoadBalancerArn]]]]]
