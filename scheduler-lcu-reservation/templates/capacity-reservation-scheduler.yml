@@ -261,6 +261,10 @@ Resources:
                   # Make the API call with the constructed parameters
                   response = elbv2_client.modify_capacity_reservation(**params)
 
+                  # Initialize status_code and status variables
+                  status_code = None
+                  status = "FAILURE"  # Default to failure
+                  
                   # Wait for capacity reservation to be provisioned or failed
                   while True:
                       response = elbv2_client.describe_capacity_reservation(
@@ -269,19 +273,42 @@ Resources:
 
                       logger.info(f"describe_capacity_reservation response: {response}")
 
-                      if response['CapacityReservationState']:
-                          status_code = response['CapacityReservationState'][0]['State']['Code']
-                   
-                          if status_code in ['provisioned', 'failed']:
+                      # Case 1: Reset to 0 - CapacityReservationState will be empty
+                      if reset_capacity_reservation and not response.get('CapacityReservationState'):
+                          status_code = 'provisioned'  # Consider empty state as success for reset
+                          status = "SUCCESS"
+                          break
+                      
+                      # Case 2: Provisioning LCU - Check all AZs for provisioning status
+                      elif response.get('CapacityReservationState'):
+                          # Check if all AZs are in the desired state
+                          all_provisioned = True
+                          any_failed = False
+                          
+                          for reservation in response['CapacityReservationState']:
+                              state_code = reservation['State']['Code']
+                              if state_code != 'provisioned':
+                                  all_provisioned = False
+                              if state_code == 'failed':
+                                  any_failed = True
+                          
+                          if all_provisioned:
+                              status_code = 'provisioned'
+                              status = "SUCCESS"
                               break
-                                          
+                          elif any_failed:
+                              status_code = 'failed'
+                              status = "FAILURE"
+                              break
+                          # If some are still pending, continue the loop
+                      
+                      # Sleep between API calls to avoid throttling
                       time.sleep(5)
-
+                  
+                  # Set message based on final status
                   if status_code == 'provisioned':
-                      status = "SUCCESS"
                       message = f"Successfully modified and provisioned capacity reservation for ELB: {elb_arn}"
                   else:
-                      status = "FAILURE" 
                       message = f"Failed to provision capacity reservation for ELB: {elb_arn}"
 
                   logger.info(f"Status: {status}, Message: {message}")
