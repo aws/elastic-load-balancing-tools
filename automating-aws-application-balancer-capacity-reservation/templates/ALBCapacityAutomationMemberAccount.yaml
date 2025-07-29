@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template to create IAM roles for ALB Capacity Automation'
+
+Parameters:
+  RootAccountId:
+    Type: String
+    Description: 'Root AWS Account ID (e.g., 123456789012)'
+    AllowedPattern: '^\d{12}$'
+    ConstraintDescription: 'Must be a valid 12-digit AWS account ID'
+
+Resources:
+  # First Role: ALBCapacityAutomationDescribeAttributeRole
+  ALBCapacityAutomationDescribeAttributeRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'ALBCapacityAutomationDescribeAttributeRole'
+      Description: 'Role for describing ALB attributes and tags'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${RootAccountId}:role/ALBCapacityAutomationMetadataCollectorRole'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'ALBCapacityAutomationDescribeAttributePolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'elasticloadbalancing:DescribeLoadBalancers'
+                  - 'elasticloadbalancing:DescribeTags'
+                Resource: '*'
+
+  # Second Role: ALBCapacityAutomationSetAttributeRole
+  ALBCapacityAutomationSetAttributeRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'ALBCapacityAutomationSetAttributeRole'
+      Description: 'Role for modifying ALB attributes and capacity'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${RootAccountId}:role/ALBCapacityAutomationModifyAttributeRole'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'ALBCapacityAutomationSetAttributePolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'elasticloadbalancing:ModifyCapacityReservation'
+                  - 'elasticloadbalancing:DescribeLoadBalancers'
+                  - 'elasticloadbalancing:DescribeTags'
+                  - 'elasticloadbalancing:DescribeCapacityReservation'
+                Resource: '*'
+
+Outputs:
+  DescribeAttributeRoleARN:
+    Description: 'ARN of ALBCapacityAutomationDescribeAttributeRole'
+    Value: !GetAtt ALBCapacityAutomationDescribeAttributeRole.Arn
+
+  SetAttributeRoleARN:
+    Description: 'ARN of ALBCapacityAutomationSetAttributeRole'
+    Value: !GetAtt ALBCapacityAutomationSetAttributeRole.Arn
