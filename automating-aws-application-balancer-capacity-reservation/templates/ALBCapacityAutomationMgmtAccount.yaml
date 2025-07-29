@@ -1,0 +1,780 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for ALB Capacity Automation Lambda Functions and EventBridge Schedules'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Schedule Configuration"
+        Parameters:
+          - MetadataCollectorScheduleExpression
+          - LCUModificationScheduleExpression
+          - LCUResetScheduleExpression
+      - Label:
+          default: "IAM Role Configuration"
+        Parameters:
+          - MemberAccountRoleWrite
+          - MemberAccountRoleRead
+    ParameterLabels:
+      MetadataCollectorScheduleExpression:
+        default: "Metadata Collector Schedule"
+      LCUModificationScheduleExpression:
+        default: "LCU Modification Schedule"
+      LCUResetScheduleExpression:
+        default: "LCU Reset Schedule"
+      MemberAccountRoleWrite:
+        default: "Member Account Write Role"
+      MemberAccountRoleRead:
+        default: "Member Account Read Role"
+
+Parameters:
+  # ===================================
+  # Schedule Configuration Parameters
+  # ===================================
+  MetadataCollectorScheduleExpression:
+    Type: String
+    Default: 'cron(0 1 ? * MON-FRI *)'
+    Description: 'Cron schedule for the Metadata Collector function (default: 1 AM UTC Monday-Friday)'
+
+  LCUModificationScheduleExpression:
+    Type: String
+    Default: 'cron(0 7 ? * MON-FRI *)'
+    Description: 'Cron schedule for the LCU Modification function (default: 7 AM UTC Monday-Friday)'
+
+  LCUResetScheduleExpression:
+    Type: String
+    Default: 'cron(0 16 ? * MON-FRI *)'
+    Description: 'Cron schedule for the LCU Reset function (default: 4 PM UTC Monday-Friday)'
+
+  # ===================================
+  # IAM Role Configuration Parameters
+  # ===================================
+  MemberAccountRoleWrite:
+    Type: String
+    Default: ALBCapacityAutomationSetAttributeRole
+    Description: 'Name of the IAM role that will be assumed in the member accounts for write functions'
+
+  MemberAccountRoleRead:
+    Type: String
+    Default: ALBCapacityAutomationDescribeAttributeRole
+    Description: 'Name of the IAM role that will be assumed in the member accounts for read functions'
+
+Resources:
+  ALBCapacityAutomationMetadataCollectorRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'ALBCapacityAutomationMetadataCollectorRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'ALBCapacityAutomationMetadataCollectorPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 'sts:AssumeRole'
+                Resource: 
+                  - 'arn:aws:iam::*:role/ALBCapacityAutomationDescribeAttributeRole'
+                  - 'arn:aws:iam::*:role/ALBCapacityAutomationSetAttributeRole'
+              - Effect: Allow
+                Action: 'organizations:ListAccounts'
+                Resource: '*'
+              - Effect: Allow
+                Action: 'ec2:DescribeRegions'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:CreateTable'
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:BatchWriteItem'
+                Resource: !GetAtt AlbPrewarmMetadataTable.Arn
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub 'arn:${AWS::Partition}:logs::${AWS::AccountId}:log-group:/aws/lambda/*'
+
+  ALBCapacityAutomationModifyAttributeRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'ALBCapacityAutomationModifyAttributeRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'ALBCapacityAutomationModifyAttributePolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: 'OrganizationAccess'
+                Effect: Allow
+                Action:
+                  - 'organizations:ListAccounts'
+                  - 'organizations:DescribeOrganization'
+                Resource: '*'
+              - Sid: 'RegionAccess'
+                Effect: Allow
+                Action: 'ec2:DescribeRegions'
+                Resource: '*'
+              - Sid: 'AssumeRolePermissions'
+                Effect: Allow
+                Action: 'sts:AssumeRole'
+                Resource:
+                  - 'arn:aws:iam::*:role/ALBCapacityAutomationDescribeAttributeRole'
+                  - 'arn:aws:iam::*:role/ALBCapacityAutomationSetAttributeRole'
+              - Sid: 'DynamoDBAccess'
+                Effect: Allow
+                Action:
+                  - 'dynamodb:Scan'
+                Resource: !GetAtt AlbPrewarmMetadataTable.Arn
+              - Sid: 'LambdaBasicExecution'
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+
+  # Lambda Function: Metadata Collector
+  MetadataCollectorFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: 'ALB-CapacityAutomation-MetadataCollector-Lambda'
+      Runtime: 'python3.13'
+      Handler: 'index.handler'
+      Role: !GetAtt ALBCapacityAutomationMetadataCollectorRole.Arn
+      Timeout: 900
+      MemorySize: 128
+      Environment:
+        Variables:
+          STACK_AWS_REGION: !Sub ${AWS::Region}
+          DYNAMO_TB_TABLE: !Ref AlbPrewarmMetadataTable
+          MEMBER_ACCOUNT_ROLE: !Ref MemberAccountRoleRead
+      Code:
+        ZipFile: |
+            import boto3
+            import logging
+            import json
+            import uuid
+            import os
+            from botocore.exceptions import ClientError, EndpointConnectionError
+
+            # Setup logging
+            logger = logging.getLogger()
+            logger.setLevel(logging.INFO)
+
+            AWS_REGION = os.environ.get("STACK_AWS_REGION", "us-east-1")
+            MEMBER_ACCOUNT_ROLE = os.environ.get('MEMBER_ACCOUNT_ROLE', 'ALBCapacityAutomationDescribeAttributeRole')
+            DYNAMODB_TABLE = os.environ.get('DYNAMO_TB_TABLE', 'alb-prewarm-metadata')
+
+            def assume_role(account_id, role_name):
+                """Assume role in member account"""
+                sts_client = boto3.client("sts")
+                role_arn = f"arn:aws:iam::{account_id}:role/{role_name}"
+                try:
+                    assumed_role = sts_client.assume_role(
+                        RoleArn=role_arn, RoleSessionName="ALBScanSession"
+                    )
+                    return assumed_role["Credentials"]
+                except Exception as e:
+                    logger.error(f"Error assuming role in account {account_id}: {str(e)}")
+                    return None
+
+
+            def get_organization_accounts():
+                """Get list of all accounts in the organization"""
+                org_client = boto3.client("organizations")
+                accounts = []
+                try:
+                    paginator = org_client.get_paginator("list_accounts")
+                    for page in paginator.paginate():
+                        accounts.extend(
+                            [
+                                account
+                                for account in page["Accounts"]
+                                if account["Status"] == "ACTIVE"
+                            ]
+                        )
+                except Exception as e:
+                    logger.error(f"Error getting organization accounts: {str(e)}")
+                return accounts
+
+
+            def get_active_regions():
+                """Get list of active AWS regions"""
+                ec2_client = boto3.client("ec2")
+                try:
+                    response = ec2_client.describe_regions()
+                    regions = [region["RegionName"] for region in response["Regions"]]
+                    logger.info(f"Found the following active regions: {regions}")
+                    return regions
+                except Exception as e:
+                    logger.info(f"Error getting AWS regions: {str(e)}")
+                    # Return STACK REGION as fallback
+                    return [AWS_REGION]
+
+
+            def delete_dynamodb_items():
+                """Delete all items from DynamoDB table"""
+                try:
+                    # Initialize DynamoDB resource
+                    dynamodb = boto3.resource("dynamodb")
+                    table = dynamodb.Table(DYNAMODB_TABLE)
+
+                    # Scan all items
+                    response = table.scan()
+                    items = response.get("Items", [])
+
+                    # Delete each item
+                    with table.batch_writer() as batch:
+                        for item in items:
+                            batch.delete_item(Key={"id": item["id"]})
+                            logger.info(f"Deleted item with id: {item['id']}")
+
+                    # Check for more items (pagination)
+                    while "LastEvaluatedKey" in response:
+                        response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+                        items = response.get("Items", [])
+
+                        with table.batch_writer() as batch:
+                            for item in items:
+                                batch.delete_item(Key={"id": item["id"]})
+                                logger.info(f"Deleted item with id: {item['id']}")
+
+                    return {
+                        "statusCode": 200,
+                        "body": "Successfully deleted all items from the table",
+                    }
+
+                except ClientError as e:
+                    logger.info(f"Error deleting items: {str(e)}")
+                    return {"statusCode": 500, "body": f"Error deleting items: {str(e)}"}
+
+
+            def get_dynamodb_table():
+                """Get the DynamoDB table"""
+                dynamodb = boto3.resource("dynamodb")
+                return dynamodb.Table(DYNAMODB_TABLE)
+
+
+            def scan_account_albs(credentials, region, account_id):
+                """Scan ALBs in a specific account and region"""
+
+                logger.debug(f"Scanning ALBs in account {account_id} in region {region}")
+                try:
+                    session = boto3.client(
+                        "elbv2",
+                        region_name=region,
+                        aws_access_key_id=credentials["AccessKeyId"],
+                        aws_secret_access_key=credentials["SecretAccessKey"],
+                        aws_session_token=credentials["SessionToken"],
+                    )
+
+                    alb_details = []
+                    try:
+                        paginator = session.get_paginator("describe_load_balancers")
+                        for page in paginator.paginate():
+                            for lb in page["LoadBalancers"]:
+                                if lb["Type"] == "application":
+                                    try:
+                                        tags = session.describe_tags(
+                                            ResourceArns=[lb["LoadBalancerArn"]]
+                                        )["TagDescriptions"][0]["Tags"]
+                                        tag_dict = {tag["Key"]: tag["Value"] for tag in tags}
+
+                                        if tag_dict.get("ALB-LCU-R-SCHEDULE") == "Yes":
+                                            lcu_set = tag_dict.get("LCU-SET")
+                                            if (
+                                                not lcu_set
+                                                or not lcu_set.isdigit()
+                                                or int(lcu_set) < 100
+                                            ):
+                                                lcu_set = "100"
+
+                                            alb_details.append(
+                                                {
+                                                    "id": str(
+                                                        uuid.uuid4()
+                                                    ),  # Unique identifier for DynamoDB
+                                                    "AlbArn": lb["LoadBalancerArn"],
+                                                    "AlbName": lb["LoadBalancerName"],
+                                                    "AccountId": account_id,
+                                                    "Region": region,
+                                                    "LcuSet": lcu_set,
+                                                }
+                                            )
+                                    except ClientError as e:
+                                        logger.error(
+                                            f"Error processing ALB {lb['LoadBalancerArn']}: {str(e)}"
+                                        )
+                                        continue
+
+                    except EndpointConnectionError:
+                        logger.error(f"Region {region} is not available or enabled")
+                        return []
+                    if alb_details:
+                        logger.info(f"Found the following tagged ALBs {alb_details}")
+                    return alb_details
+                except Exception as e:
+                    logger.error(f"Error scanning ALBs in account {account_id}, region {region}: {str(e)}")
+                    return []
+
+
+            def handler(event, context):
+                """Lambda function handler"""
+                try:
+                    # Get active AWS regions
+                    regions = get_active_regions()
+                    if not regions:
+                        raise Exception("No active regions found")
+
+                    # Get organization accounts
+                    accounts = get_organization_accounts()
+
+                    if accounts:
+                        logger.info(
+                            f"Found the following accounts: {[account['Id'] for account in accounts]}"
+                        )
+                    else:
+                        raise Exception("No accounts found in organization")
+
+                    # Delete DynamoDB items
+                    delete_dynamodb_items()
+                    # Get DynamoDB table
+                    dynamodb_table = get_dynamodb_table()
+
+                    results = []
+                    for account in accounts:
+                        account_id = account["Id"]
+
+                        # Assume role in member account
+                        logger.info(f"Assuming role {MEMBER_ACCOUNT_ROLE} in {account_id}")
+                        credentials = assume_role(account_id, MEMBER_ACCOUNT_ROLE)
+
+                        if not credentials:
+                            continue
+
+                        # Scan each active region
+                        for region in regions:
+                            try:
+                                alb_details = scan_account_albs(credentials, region, account_id)
+
+                                # Update DynamoDB
+                                for alb in alb_details:
+                                    try:
+                                        dynamodb_table.put_item(Item=alb)
+                                        results.append(
+                                            {
+                                                "message": f"Updated ALB: {alb['AlbName']} in account {alb['AccountId']}, region {region}",
+                                                "details": alb,
+                                            }
+                                        )
+                                    except Exception as e:
+                                        logger.error(
+                                            f"Error updating DynamoDB for ALB {alb['AlbArn']}: {str(e)}"
+                                        )
+                                        continue
+                            except Exception as e:
+                                logger.error(f"Error processing region {region}: {str(e)}")
+                                continue
+
+                    return {
+                        "statusCode": 200,
+                        "body": json.dumps(
+                            {"message": "Scan completed successfully", "results": results},
+                            default=str,
+                        ),
+                    }
+
+                except Exception as e:
+                    error_message = f"Error in Lambda execution: {str(e)}"
+                    logger.error(error_message)
+                    return {"statusCode": 500, "body": json.dumps({"error": error_message})}
+
+
+  # Lambda Function: LCU Modification
+  LCUModificationFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: 'ALB-CapacityAutomation-LCUModification-Lambda'
+      Runtime: 'python3.13'
+      Handler: 'index.handler'
+      Role: !GetAtt ALBCapacityAutomationModifyAttributeRole.Arn
+      Timeout: 900
+      MemorySize: 128
+      Environment:
+        Variables:
+          STACK_AWS_REGION: !Sub ${AWS::Region}
+          DYNAMO_TB_TABLE: !Ref AlbPrewarmMetadataTable
+          MEMBER_ACCOUNT_ROLE: !Ref MemberAccountRoleWrite
+      Code:
+        ZipFile: |
+            import boto3
+            from botocore.exceptions import ClientError
+            import logging
+            import time
+            import os
+
+            # Setup logging
+            logger = logging.getLogger()
+            logger.setLevel(logging.INFO)
+
+            # Constants
+            DYNAMODB_TABLE = os.environ.get('DYNAMO_TB_TABLE', 'alb-prewarm-metadata')
+            MEMBER_ACCOUNT_ROLE = os.environ.get('MEMBER_ACCOUNT_ROLE', 'ALBCapacityAutomationSetAttributeRole')
+            AWS_REGION = os.environ.get('STACK_AWS_REGION', 'us-east-1')
+            MAX_RETRIES = 3
+            RETRY_DELAY = 1
+
+            def assume_role(account_id):
+                """Assume role in member account"""
+                logger.info(f"Attempting to assume role in account {account_id}")
+                sts_client = boto3.client('sts')
+                try:
+                    role_arn = f'arn:aws:iam::{account_id}:role/{MEMBER_ACCOUNT_ROLE}'
+                    response = sts_client.assume_role(
+                        RoleArn=role_arn,
+                        RoleSessionName=f'ALBModificationSession-{int(time.time())}',
+                        DurationSeconds=900
+                    )
+                    logger.info(f"Successfully assumed role in account {account_id}")
+                    return response['Credentials']
+                except ClientError as e:
+                    logger.error(f"Error assuming role in account {account_id}: {e}")
+                    return None
+
+            def get_elbv2_client(credentials, region):
+                """Create ELBv2 client with assumed role credentials"""
+                logger.info(f"Creating ELBv2 client for region {region}")
+                if credentials:
+                    client = boto3.client('elbv2',
+                        aws_access_key_id=credentials['AccessKeyId'],
+                        aws_secret_access_key=credentials['SecretAccessKey'],
+                        aws_session_token=credentials['SessionToken'],
+                        region_name=region
+                    )
+                    logger.info(f"Successfully created ELBv2 client")
+                    return client
+                logger.error(f"Failed to create ELBv2 client - no credentials provided")
+                return None
+
+            def get_alb_data_from_dynamodb():
+                """Scan DynamoDB table with pagination"""
+                logger.info(f"Retrieving ALB information from DynamoDB table: {DYNAMODB_TABLE}")
+                dynamodb = boto3.resource('dynamodb')
+                table = dynamodb.Table(DYNAMODB_TABLE)
+                
+                try:
+                    items = []
+                    last_evaluated_key = None
+                    scan_count = 0
+                    
+                    while True:
+                        scan_count += 1
+                        logger.info(f"Performing scan iteration {scan_count}")
+                        
+                        if last_evaluated_key:
+                            response = table.scan(ExclusiveStartKey=last_evaluated_key)
+                        else:
+                            response = table.scan()
+                        
+                        current_batch = response.get('Items', [])
+                        items.extend(current_batch)
+                        logger.info(f"Retrieved {len(current_batch)} items in this batch. Total items so far: {len(items)}")
+                        
+                        last_evaluated_key = response.get('LastEvaluatedKey')
+                        if not last_evaluated_key:
+                            break
+                    
+                    logger.info(f"Completed DynamoDB scan. Total items retrieved: {len(items)}")
+
+                    return items
+                except ClientError as e:
+                    logger.error(f"Error scanning DynamoDB table: {e}")
+                    return []
+
+            def modify_alb_capacity(client, load_balancer_arn, capacity_units, is_reset_lcu):
+                """Modify ALB capacity with retry logic"""
+                
+                for attempt in range(MAX_RETRIES):
+                    try:
+                        logger.info(f"Attempt {attempt + 1} of {MAX_RETRIES}")
+                        
+                        if is_reset_lcu:
+                            logger.info(f"Resetting provisioned capacity for ALB {load_balancer_arn}")
+                        else:
+                            logger.info(f"Setting capacity units to {capacity_units} for {load_balancer_arn}")
+
+                        # Create base parameters
+                        params = {
+                            'LoadBalancerArn': load_balancer_arn,
+                            'ResetCapacityReservation': is_reset_lcu
+                        }
+
+                        # Add MinimumLoadBalancerCapacity only if is_reset_lcu is false
+                        if not is_reset_lcu:
+                            params['MinimumLoadBalancerCapacity'] = {
+                                'CapacityUnits': capacity_units
+                            }
+
+                        # Make the API call with the constructed parameters
+                        response = client.modify_capacity_reservation(**params)
+                        logger.debug(f"Api response: {response}")
+                        logger.info(f"Successfully modified capacity for ALB {load_balancer_arn}")
+
+                        return True
+                    except ClientError as e:
+                        logger.error(f"Attempt {attempt + 1} failed: {e}")
+                        if attempt == MAX_RETRIES - 1:
+                            logger.info(f"All attempts failed for ALB {load_balancer_arn}")
+                            logger.error(f"Error modifying ALB {load_balancer_arn}: {e}")
+                            return False
+                        logger.info(f"Retrying in {RETRY_DELAY * (attempt + 1)} seconds...")
+                        time.sleep(RETRY_DELAY * (attempt + 1))
+                return False
+
+            def process_account_albs(account_id, alb_items, is_reset_lcu):
+                """Process all ALBs for a specific account"""
+                logger.info(f"Processing {len(alb_items)} ALB(s) in the account {account_id}")
+
+                # Group ALBs by region for efficient processing
+                albs_by_region = {}
+                for item in alb_items:
+                    region = item.get('Region', AWS_REGION)
+                    if region not in albs_by_region:
+                        albs_by_region[region] = []
+                    albs_by_region[region].append(item)
+                
+                credentials = assume_role(account_id)
+                if not credentials:
+                    logger.error(f"Cannot process ALBs for account {account_id} - failed to assume role")
+                    return 0, len(alb_items)
+
+                # Track metrics
+                successful = 0
+                failed = 0
+                processed = 0
+                total_albs = len(alb_items)
+
+                # Process ALBs region by region
+                for region, region_albs in albs_by_region.items():
+                    logger.info(f"Processing {len(region_albs)} ALB(s) in {region}")
+
+                    elbv2_client = get_elbv2_client(credentials, region)
+                    if not elbv2_client:
+                        logger.error(f"Cannot process ALBs for account {account_id} in region {region} - client creation failed")
+                        failed += len(region_albs)
+                        continue
+
+                    # Process ALBs in the current region
+                    for item in region_albs:
+                        processed += 1
+                        alb_arn = item.get('AlbArn')
+                        lcu_set = item.get('LcuSet')
+                        alb_name = item.get('AlbName', 'Unknown')
+
+                        # Validate ALB data
+                        if not alb_arn or not lcu_set:
+                            logger.error(
+                                "VALIDATION_ERROR - Missing required data: alb_arn {alb_arn} , lcu_set: {lcu_set} "
+                            )
+                            failed += 1
+                            continue
+
+                        try:
+                            # Validate LCU value is a positive integer
+                            lcu_value = int(lcu_set)
+                            if lcu_value <= 0:
+                                raise ValueError("LCU value must be positive")
+
+                            logger.info(
+                                f"Processing ALB {processed}/{total_albs}"
+                            )
+
+                            if modify_alb_capacity(elbv2_client, alb_arn, lcu_value, is_reset_lcu):
+                                successful += 1
+                            else:
+                                failed += 1
+                        except ValueError as e:
+                            failed += 1
+                            logger.error(f"[VALUE_ERROR] Invalid LCU value for ALB {alb_name}: {str(e)}")
+
+                logger.info(f"Account {account_id} processing complete - successful: {successful} , failed {failed}")
+                return successful, failed
+
+
+            def handler(event, context):
+                """Main Lambda handler"""
+                logger.info(f"Starting Lambda execution, event received: {event}")
+
+                action = event.get('action')
+                is_reset_lcu = action == 'reset_lcu'
+
+                try:
+                    alb_data = get_alb_data_from_dynamodb()
+                    
+                    if not alb_data:
+                        logger.info("No ALB data found in DynamoDB table")
+                        return {
+                            'statusCode': 200,
+                            'body': 'No ALBs to process'
+                        }
+
+                    logger.info("Grouping ALBs by account")
+                    account_albs = {}
+                    for item in alb_data:
+                        account_id = item.get('AccountId')
+                        if account_id:
+                            if account_id not in account_albs:
+                                account_albs[account_id] = []
+                            account_albs[account_id].append(item)
+                    
+                    logger.info(f"Found {len(account_albs)} accounts to process: {account_albs}")
+
+                    total_successful = 0
+                    total_failed = 0
+
+                    for account_id, alb_items in account_albs.items():
+                        logger.info(f"Processing account {account_id}")
+                        successful, failed = process_account_albs(account_id, alb_items, is_reset_lcu)
+                        total_successful += successful
+                        total_failed += failed
+
+                    summary = (
+                        f"\n[EXECUTION SUMMARY]\n"
+                        f"Total accounts processed: {len(account_albs)}\n"
+                        f"Total successful updates: {total_successful}\n"
+                        f"Total failed updates: {total_failed}"
+                    )
+                    logger.info(summary)
+
+                    return {
+                        'statusCode': 200,
+                        'body': f'Processed {total_successful + total_failed} ALBs across {len(account_albs)} accounts. '
+                            f'Successful: {total_successful}, Failed: {total_failed}'
+                    }
+
+                except Exception as e:
+                    error_message = f"Lambda execution failed: {e}"
+                    logger.error(error_message)
+                    raise
+
+
+  # EventBridge Scheduler Role
+  SchedulerRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaRole'
+
+  # EventBridge Schedules
+  MetadataCollectorSchedule:
+    Type: 'AWS::Scheduler::Schedule'
+    Properties:
+      Name: 'ALBautomation-MetadataCollector'
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      ScheduleExpression: !Ref MetadataCollectorScheduleExpression
+      Target:
+        Arn: !GetAtt MetadataCollectorFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+      State: 'ENABLED'
+
+  LCUModificationSchedule:
+    Type: 'AWS::Scheduler::Schedule'
+    Properties:
+      Name: 'ALBautomation-LCUModification'
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      ScheduleExpression: !Ref LCUModificationScheduleExpression
+      Target:
+        Arn: !GetAtt LCUModificationFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+      State: 'ENABLED'
+
+  LCUResetSchedule:
+    Type: 'AWS::Scheduler::Schedule'
+    Properties:
+      Name: 'ALBautomation-LCUReset'
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      ScheduleExpression: !Ref LCUResetScheduleExpression
+      Target:
+        Arn: !GetAtt LCUModificationFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: '{"action": "reset_lcu"}'
+      State: 'ENABLED'
+
+  # Lambda Permissions for EventBridge
+  MetadataCollectorPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref MetadataCollectorFunction
+      Principal: 'scheduler.amazonaws.com'
+
+  LCUModificationPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref LCUModificationFunction
+      Principal: 'scheduler.amazonaws.com'
+
+  # DynamoDB Table for ALB Metadata
+  AlbPrewarmMetadataTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: 'alb-prewarm-metadata'
+      BillingMode: 'PROVISIONED'
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      AttributeDefinitions:
+        - AttributeName: 'id'
+          AttributeType: 'S'
+      KeySchema:
+        - AttributeName: 'id'
+          KeyType: 'HASH'
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+Outputs:
+  MetadataCollectorFunctionArn:
+    Description: 'ARN of Metadata Collector Lambda Function'
+    Value: !GetAtt MetadataCollectorFunction.Arn
+
+  LCUModificationFunctionArn:
+    Description: 'ARN of LCU Modification Lambda Function'
+    Value: !GetAtt LCUModificationFunction.Arn
+    
+  AlbPrewarmMetadataTableArn:
+    Description: 'ARN of ALB Prewarm Metadata DynamoDB Table'
+    Value: !GetAtt AlbPrewarmMetadataTable.Arn
+
+  MetadataCollectorRoleARN:
+    Description: 'ARN of ALBCapacityAutomationMetadataCollectorRole'
+    Value: !GetAtt ALBCapacityAutomationMetadataCollectorRole.Arn
+  ModifyAttributeRoleARN:
+    Description: 'ARN of ALBCapacityAutomationModifyAttributeRole'
+    Value: !GetAtt ALBCapacityAutomationModifyAttributeRole.Arn
