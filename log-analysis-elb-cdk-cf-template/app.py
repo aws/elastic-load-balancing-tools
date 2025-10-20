@@ -21,23 +21,23 @@ stack = AthenaStack(app, 'AthenaElbLogStack', env={'region': region})
 stack.template_options.description = 'Athena & Glue resources for ELB Access Logs analysis'
 
 # Example for ALB 
-alb_bucket_name = 'my-alb-access-log-s3-bucket'
+alb_bucket_name = 'amzn-s3-demo-bucket-alb-access-log' # replace this value with your actual bucket name
 stack.athena_alb('main_alblogs_bucket1', alb_bucket_name)
 
 # Example for CLB 
-clb_bucket_name = 'my-clb-access-log-s3-bucket'
+clb_bucket_name = 'amzn-s3-demo-bucket-clb-access-log' # replace this value with your actual bucket name
 stack.athena_clb('main_clblogs_bucket1', clb_bucket_name)
 
 # Example for NLB 
-nlb_bucket_name = 'my-nlb-access-log-s3-bucket'
+nlb_bucket_name = 'amzn-s3-demo-bucket-nlb-access-log' # replace this value with your actual bucket name
 stack.athena_nlb('main_nlblogs_bucket1', nlb_bucket_name)
 
 # Example for ALB/ Cross-account, adding bucket_account parameter with the account id
-alb_bucket_name = 'my-alb-access-log-s3-bucket-in-otheraccount'
+alb_bucket_name = 'amzn-s3-demo-bucket-alb-access-log' # replace this value with your actual bucket name
 stack.athena_alb('main_logs_cross_account', alb_bucket_name, bucket_account='123456789012')
 
 # Example with specific prefix in the S3 bucket, add bucket_prefix parameter
-alb_bucket_name = 'my-alb-access-log-s3-bucket'
+alb_bucket_name = 'amzn-s3-demo-bucket-alb-access-log' # replace this value with your actual bucket name
 stack.athena_alb('main_logs_cross_account', alb_bucket_name, bucket_prefix='myalb1')
 
 app.synth()
