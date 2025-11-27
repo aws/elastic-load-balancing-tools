@@ -1,0 +1,626 @@
+# ALB IPAM Monitoring Solution
+# Version: Check the Mappings section under Solution,Info,Version for the version number.
+
+# Disclaimer:
+# Samples are provided as is, and are not intended to be used in production without review / editing to meet your organizational compliance needs.
+
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Licensed under the Apache License Version 2.0 (the "License"). You may not use this file except in compliance with the License. A copy of the License is located at
+# http://www.apache.org/licenses/
+# or in the "LICENSE" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and limitations under the License.
+
+Description: 'ALB IPAM Monitoring Solution - This CloudFormation template deploys a solution that monitors IP address usage for Application Load Balancers (ALB) that have VPC IPAM (IP Address Management) pools enabled. It automatically discovers all IPAM-enabled ALBs in your AWS account, performs DNS lookups using the "all." prefix to get the IP addresses associated with each ALB, and validates these IPs against the expected IPAM pool CIDR blocks to detect any foreign IPs that fall outside the designated ranges. The function then publishes two custom CloudWatch metrics: IPAddressCount (total unique IPs per ALB) and ForeignIPDetected (count of IPs outside IPAM pool CIDRs), enabling the monitoring of IP consumption trends, and detecting potential client impact when unexpected IP addresses appear outside of the managed IPAM pools.'
+
+AWSTemplateFormatVersion: '2010-09-09'
+
+Mappings:
+  Solution:
+    Info:
+      Version: '2.0'
+
+Conditions:
+  EnableSNSNotifications: !Not [!Equals [!Ref SNSTopicArn, '']]
+  IsRate1Minute: !Equals [!Ref ScheduleExpression, 'rate(1 minute)']
+  IsRate5Minutes: !Equals [!Ref ScheduleExpression, 'rate(5 minutes)']
+  IsRate10Minutes: !Equals [!Ref ScheduleExpression, 'rate(10 minutes)']
+
+Parameters:
+  ScheduleExpression:
+    Type: String
+    Default: 'rate(1 minute)'
+    AllowedValues:
+      - 'rate(1 minute)'
+      - 'rate(5 minutes)'
+      - 'rate(10 minutes)'
+    Description: 'EventBridge schedule expression for Lambda execution frequency'
+  
+  EnableDebugLogging:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Enable debug logging in Lambda function. Verbose, use for troubleshooting only.'
+  
+  SNSTopicArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^(arn:aws:sns:[a-z0-9-]+:[0-9]{12}:[a-zA-Z0-9_-]+)?$'
+    Description: 'Optional SNS Topic ARN for Alarm notifications (leave empty to disable notifications). Format: arn:aws:sns:region:account-id:topic-name'
+    ConstraintDescription: 'Must be a valid SNS topic ARN or empty string'
+  
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+    Description: 'CloudWatch Log Group retention period in days.'
+  
+  CloudWatchMetricNamespace:
+    Type: String
+    Default: 'ALB/IPAM-Monitoring'
+    Description: 'CloudWatch metric namespace for custom metrics.'
+
+Resources:
+  # Managed Policy for ALB IPAM Monitoring
+  ALBIPAMMonitoringPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: ALBIPAMMonitoringPolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - elasticloadbalancing:DescribeLoadBalancers
+              - ec2:GetIpamPoolCidrs
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - cloudwatch:PutMetricData
+            Resource: '*'
+          - !If
+            - EnableSNSNotifications
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref SNSTopicArn
+            - !Ref 'AWS::NoValue'
+
+  # IAM Role for Lambda Function
+  ALBIPAMMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Ref ALBIPAMMonitoringPolicy
+
+  # CloudWatch Log Group for Lambda Function
+  ALBIPAMMonitoringLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: '/aws/lambda/ALB-IPAM-Monitoring'
+      RetentionInDays: !Ref LogRetentionDays
+
+  # Lambda Function
+  ALBIPAMMonitoringFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ALBIPAMMonitoringLogGroup
+    Properties:
+      FunctionName: 'ALB-IPAM-Monitoring'
+      Description: !Sub 
+        - 'ALB IPAM Monitoring Lambda Function - Version ${Version}'
+        - Version: !FindInMap [Solution, Info, Version]
+      Runtime: python3.13
+      Handler: index.lambda_handler
+      Role: !GetAtt ALBIPAMMonitoringRole.Arn
+      ReservedConcurrentExecutions: 2
+      Timeout: 60
+      MemorySize: 128
+      EphemeralStorage:
+        Size: 512
+      LoggingConfig:
+        LogGroup: '/aws/lambda/ALB-IPAM-Monitoring'
+      Environment:
+        Variables:
+          DEBUG_LOGGING: !Ref EnableDebugLogging
+          CLOUDWATCH_NAMESPACE: !Ref CloudWatchMetricNamespace
+      Code:
+        ZipFile: |
+            """
+            ALB IPAM Monitoring Solution Lambda Function
+            """
+
+            import boto3
+            from botocore.config import Config
+            import json
+            import socket
+            import time
+            import ipaddress
+            import os
+            import logging
+            from datetime import datetime
+
+            # Configure logging
+            logger = logging.getLogger()
+            logger.setLevel(logging.DEBUG if os.environ.get('DEBUG_LOGGING', 'false').lower() == 'true' else logging.INFO)
+            # Customize the log format
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(levelname)s: %(message)s')
+            handler.setFormatter(formatter)
+            logger.handlers.clear()
+            logger.addHandler(handler)
+
+            def get_unique_ips(domain, retries=3, delay=1):
+                """
+                Perform a DNS lookup for the domain using socket.getaddrinfo, and return a list of unique IP addresses from the response:
+                Args:
+                    domain (str): The load balancer domain name (will be prefixed with "all.")
+                    retries (int): Maximum number of retry attempts (default: 3)
+                    delay (int): Delay between retries in seconds (default: 1)
+                Returns:
+                    list: List of unique IP addresses or empty list if failed
+                """
+                # Add "all." prefix to get all IPs for the load balancer
+                all_dns_name = f"all.{domain}"
+                logger.debug(f"Performing DNS lookup for: {all_dns_name}")
+                for attempt in range(1, retries + 1):
+                    # Perform DNS lookup
+                    try:
+                        result = socket.getaddrinfo(all_dns_name, None)
+                        logger.debug(f"DNS lookup result: {result}")
+                    except Exception as e:
+                        logger.error(f"Attempt {attempt}/{retries} DNS lookup failed for {all_dns_name}: {e}")
+                        if attempt < retries:
+                            logger.info(f"Retrying in {delay} seconds...")
+                            time.sleep(delay)
+                            continue
+                        else:
+                            logger.error("Max retries reached. DNS lookup failed.")
+                            return []
+                    
+                    # Extract unique IP addresses from the result
+                    try:
+                        ip_addresses = set()
+                        for entry in result:
+                            ip = entry[4][0]  # Extract IP address from the tuple
+                            ip_addresses.add(ip)
+                        
+                        unique_ips = list(ip_addresses)
+                        logger.debug(f"Unique IP addresses found: {unique_ips}")
+                        return unique_ips
+                    except (IndexError, TypeError) as e:
+                        logger.error(f"Error extracting IPs from DNS result: {e}")
+                        return []
+
+            def check_foreign_ips(ip_list, cidr_blocks):
+                """
+                Check if any IPs are outside the expected CIDR blocks (foreign IPs)
+                Args:
+                    ip_list (list): List of IP addresses to check
+                    cidr_blocks (list): List of CIDR blocks to validate against
+                Returns:
+                    list: List of foreign IP addresses
+                """
+                try:
+                    logger.debug(f"Checking {len(ip_list)} IPs against {len(cidr_blocks)} CIDR blocks")
+                    
+                    if not cidr_blocks:
+                        logger.debug("No CIDR blocks provided, all IPs considered foreign")
+                        return ip_list
+                    
+                    foreign_ips = []
+                    
+                    # Convert CIDR blocks to network objects
+                    networks = []
+                    for cidr in cidr_blocks:
+                        try:
+                            networks.append(ipaddress.ip_network(cidr, strict=False))
+                        except ValueError as e:
+                            logger.debug(f"Invalid CIDR block {cidr}: {e}")
+                            continue
+                    
+                    # Check each IP against all networks
+                    for ip_str in ip_list:
+                        try:
+                            ip = ipaddress.ip_address(ip_str)
+                            is_foreign = True
+                            
+                            for network in networks:
+                                if ip in network:
+                                    is_foreign = False
+                                    break
+                            
+                            if is_foreign:
+                                foreign_ips.append(ip_str)
+                                logger.debug(f"Foreign IP detected: {ip_str}")
+                            else:
+                                logger.debug(f"IP {ip_str} is within expected CIDR blocks")
+                                
+                        except ValueError as e:
+                            logger.debug(f"Invalid IP address {ip_str}: {e}")
+                            foreign_ips.append(ip_str)  # Treat invalid IPs as foreign
+                    
+                    return foreign_ips
+                
+                except Exception as e:
+                    logger.error(f"Failed to check foreign IPs: {e}")
+                    return ip_list  # Treat all IPs as foreign if function fails
+
+            def publish_metric(cloudwatch_client, loadbalancer_arn, metric_value, metric_name, timestamp):
+                """
+                Publish a metric to CloudWatch for the Application Load Balancer
+                Args:
+                    cloudwatch_client: The CloudWatch client (with native boto3 retry configured)
+                    loadbalancer_arn (str): The ARN of the load balancer
+                    metric_value (int): The metric value to publish
+                    metric_name (str): The name of the metric
+                    timestamp (datetime): The timestamp to use for the metric
+                Returns:
+                    bool: True if successful, False otherwise
+                """
+                try:
+                    response = cloudwatch_client.put_metric_data(
+                        Namespace=os.environ.get('CLOUDWATCH_NAMESPACE'),
+                        MetricData=[
+                            {
+                                'MetricName': metric_name,
+                                'Dimensions': [
+                                    {
+                                        'Name': 'LoadBalancerArn',
+                                        'Value': loadbalancer_arn
+                                    }
+                                ],
+                                'Value': metric_value,
+                                'Unit': 'Count',
+                                'Timestamp': timestamp
+                            }
+                        ]
+                    )
+                    logger.debug(f"Successfully published {metric_name} metric: {metric_value} for ALB: {loadbalancer_arn}")
+                    return True
+                except Exception as e:
+                    logger.error(f"Failed to publish {metric_name} metric: {e}")
+                    return False
+
+            def get_ipam_pool_cidrs(ec2_client, ipam_pool_id):
+                """
+                Get CIDR blocks for an IPAM pool
+                Args:
+                    ec2_client: The EC2 client (with native boto3 retry configured)
+                    ipam_pool_id (str): The IPAM pool ID
+                Returns:
+                    list: List of CIDR blocks or empty list if failed
+                """
+                try:
+                    response = ec2_client.get_ipam_pool_cidrs(IpamPoolId=ipam_pool_id)
+                    cidrs = []
+                    for cidr_info in response.get('IpamPoolCidrs', []):
+                        if cidr_info.get('State') == 'provisioned':
+                            cidrs.append(cidr_info['Cidr'])
+                    
+                    logger.debug(f"Retrieved {len(cidrs)} CIDR blocks for pool {ipam_pool_id}: {cidrs}")
+                    return cidrs
+                except Exception as e:
+                    logger.error(f"Failed to get IPAM pool CIDRs: {e}")
+                    return []
+
+            def get_ipam_enabled_albs(elbv2_client):
+                """
+                Get all IPAM-enabled Application Load Balancers
+                Args:
+                    elbv2_client: The ELBv2 client (with native boto3 retry configured)
+                Returns:
+                    list: List of IPAM-enabled ALB dictionaries
+                """
+                try:
+                    response = elbv2_client.describe_load_balancers()
+                    logger.debug(f"elbv2.describe_load_balancers API response: {json.dumps(response, indent=4, sort_keys=True, default=str)}")
+                    
+                    ipam_albs = []
+                    for lb in response.get('LoadBalancers', []):
+                        if lb.get('Type') == 'application' and 'IpamPools' in lb:
+                            ipam_albs.append(lb)
+                    
+                    logger.debug(f"Filtering for IPAM enabled ALBs: {json.dumps(ipam_albs, indent=4, default=str)}")
+                    return ipam_albs
+                except Exception as e:
+                    logger.error(f"Failed to get IPAM-enabled ALBs: {e}")
+                    return []
+
+            def process_alb(alb, ec2_client, cloudwatch_client, execution_timestamp):
+                """
+                Process a single ALB and publish metrics
+                Args:
+                    alb (dict): ALB dictionary from describe_load_balancers response
+                    ec2_client: The EC2 client (with native boto3 retry configured)
+                    cloudwatch_client: The CloudWatch client (with native boto3 retry configured)
+                    execution_timestamp (datetime): Timestamp to use for metric publication
+                Returns:
+                    bool: True if successful, False if failed
+                """
+                loadbalancer_fqdn = alb['DNSName']
+                loadbalancer_arn = alb['LoadBalancerArn']
+                
+                # Perform DNS lookup
+                ip_list = get_unique_ips(loadbalancer_fqdn)
+                
+                if not ip_list:
+                    return False
+                    
+                ip_count = len(ip_list)
+                
+                # Get IPAM pool CIDRs
+                ipam_pool_data = alb.get('IpamPools', [])
+                all_cidrs = []
+                pool_ids = []
+                
+                for key, value in ipam_pool_data.items():
+                    if key in ['Ipv4IpamPoolId', 'Ipv6IpamPoolId', 'IpamPoolId'] and value:
+                        pool_ids.append(value)
+                        logger.debug(f"Found pool ID from key '{key}': {value}")
+                
+                logger.info(f"ALB: {loadbalancer_arn}, IP count: {ip_count}, IP address list: {ip_list}, IPAM pools: {pool_ids}")
+                
+                for ipam_pool_id in pool_ids:
+                    if ipam_pool_id and ipam_pool_id.startswith('ipam-pool-'):
+                        pool_cidrs = get_ipam_pool_cidrs(ec2_client, ipam_pool_id)
+                        all_cidrs.extend(pool_cidrs)
+                        logger.debug(f"IPAM Pool {ipam_pool_id} CIDRs: {pool_cidrs}")
+                    else:
+                        logger.debug(f"Invalid IPAM pool ID format: {ipam_pool_id}")
+                
+                # Check for foreign IPs and publish metrics
+                foreign_ips = check_foreign_ips(ip_list, all_cidrs)
+                
+                if foreign_ips:
+                    logger.warning(f"Foreign IPs detected for ALB {loadbalancer_arn}: {foreign_ips}, Expected CIDR blocks: {all_cidrs}. Add more free CIDR space to IPAM pool and reach out to AWS Support to remove the non-IPAM IPs from your Load Balancer.")
+                    foreign_ip_count = len(foreign_ips)
+                    publish_metric(cloudwatch_client, loadbalancer_arn, foreign_ip_count, 'ForeignIPDetected', execution_timestamp)
+                else:
+                    logger.info(f"All IPs for ALB {loadbalancer_arn} are within expected CIDR blocks")
+                    publish_metric(cloudwatch_client, loadbalancer_arn, 0, 'ForeignIPDetected', execution_timestamp)
+                
+                return publish_metric(cloudwatch_client, loadbalancer_arn, ip_count, 'IPAddressCount', execution_timestamp)
+
+            def lambda_handler(event, context):
+                # Capture execution timestamp at start for consistent metric timestamps
+                execution_timestamp = datetime.utcnow()
+                
+                # Define retry logic for boto3 aws clients
+                retry_config = Config(
+                    retries={
+                        'max_attempts': 10,
+                        'mode': 'adaptive'
+                    }
+                )
+                # Initialize aws clients
+                elbv2 = boto3.client('elbv2', config=retry_config)
+                cloudwatch = boto3.client('cloudwatch', config=retry_config)
+                ec2 = boto3.client('ec2', config=retry_config)
+                logger.debug(f'boto3 version: {boto3.__version__}')
+                
+                try:
+                    # Get all IPAM-enabled ALBs
+                    ipam_albs = get_ipam_enabled_albs(elbv2)
+                    
+                    if not ipam_albs:
+                        return {
+                            'statusCode': 200,
+                            'body': "No IPAM-enabled ALBs found"
+                        }
+                    
+                    # Process each IPAM-enabled ALB
+                    success_count = 0
+                    failure_count = 0
+                    failed_albs = []
+                    
+                    for alb in ipam_albs:
+                        if process_alb(alb, ec2, cloudwatch, execution_timestamp):
+                            success_count += 1
+                        else:
+                            failure_count += 1
+                            failed_albs.append(alb['LoadBalancerArn'])
+                    
+                    # Return appropriate status based on results
+                    if failure_count == 0:
+                        message = f"Succeeded in processing all {success_count} IPAM-enabled ALBs."
+                        logger.info(message)
+                        return {
+                            'statusCode': 200,
+                            'body': message
+                        }
+                    elif success_count == 0:
+                        message = f"Failure during processing all {failure_count} IPAM-enabled ALBs."
+                        logger.warning(f"{message}. Failed ALBs: {failed_albs}")
+                        return {
+                            'statusCode': 500,
+                            'body': message
+                        }
+                    else:
+                        message = f"Partial Success during load balancer processing: {success_count} succeeded, {failure_count} failed"
+                        logger.warning(f"{message}. Failed ALBs: {failed_albs}")
+                        return {
+                            'statusCode': 207,
+                            'body': message
+                        }
+                        
+                except Exception as e:
+                    logger.error(f"Lambda execution failed: {e}")
+                    return {
+                        'statusCode': 500,
+                        'body': f"Lambda execution failed: {str(e)}"
+                    }
+
+  # EventBridge Rule for Lambda Scheduling
+  ALBIPAMMonitoringScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: 'ALB-IPAM-Monitoring-Schedule'
+      Description: 'Schedule for ALB IPAM monitoring Lambda function'
+      ScheduleExpression: !Ref ScheduleExpression
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt ALBIPAMMonitoringFunction.Arn
+          Id: 'ALBIPAMMonitoringTarget'
+
+  # Permission for EventBridge to invoke Lambda
+  ALBIPAMMonitoringLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ALBIPAMMonitoringFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ALBIPAMMonitoringScheduleRule.Arn
+
+  # CloudWatch Alarm for ForeignIPDetected using Metrics Insights Query
+  ForeignIPDetectedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'ALB-IPAM-Monitoring-Foreign-IP-Detected-${AWS::Region}'
+      AlarmDescription: 'Alarm triggered when Foreign IPs are detected for IPAM enabled Application Load Balancers (ALB)'
+      Metrics:
+        - Id: 'm1'
+          Expression: !Sub 'SELECT MAX(ForeignIPDetected) FROM SCHEMA("${CloudWatchMetricNamespace}", LoadBalancerArn)'
+          Label: 'Max ForeignIPDetected Across All IPAM enabled ALBs'
+          Period: !If
+            - IsRate1Minute
+            - 60
+            - !If
+              - IsRate10Minutes
+              - 600
+              - 300
+          ReturnData: true
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 1
+      Threshold: 0
+      ComparisonOperator: 'GreaterThanThreshold'
+      AlarmActions: !If
+        - EnableSNSNotifications
+        - [!Ref SNSTopicArn]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - EnableSNSNotifications
+        - [!Ref SNSTopicArn]
+        - !Ref 'AWS::NoValue'
+      TreatMissingData: 'notBreaching'
+
+  # CloudWatch Dashboard
+  ALBIPAMMonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: 'ALB-IPAM-Monitoring'
+      DashboardBody: !Sub |
+        {
+            "widgets": [
+                {
+                    "type": "text",
+                    "x": 0,
+                    "y": 0,
+                    "width": 12,
+                    "height": 5,
+                    "properties": {
+                        "markdown": "In case your VPC IPAM Pool doesn’t have sufficient IP addresses available during Application Load Balancer (ALB) node replacement or scaling activity, the ALB will fall back on Amazon owned public IP addresses to ensure availability [1]. \n\nIf this solution detects an IPAM enabled ALB having a foreign IP address in DNS; free up or add more CIDR space to the respective IPAM pool [2], and reach out to AWS Support to remove the non-IPAM pool IP addresses from your Load Balancer [3].\n\n[1] ALB IPAM IP address pools - https://docs.aws.amazon.com/elasticloadbalancing/latest/application/application-load-balancers.html#ip-pools  \n[2] VPC IPAM - https://docs.aws.amazon.com/vpc/latest/ipam  \n[3] AWS Support Case - https://docs.aws.amazon.com/awssupport/latest/user/case-management.html",
+                        "background": "transparent"
+                    }
+                },
+                {
+                    "type": "alarm",
+                    "x": 12,
+                    "y": 0,
+                    "width": 12,
+                    "height": 5,
+                    "properties": {
+                        "title": "Alarms",
+                        "alarms": [
+                            "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:ALB-IPAM-Monitoring-Foreign-IP-Detected-${AWS::Region}"
+                        ]
+                    }
+                },
+                {
+                    "type": "metric",
+                    "x": 0,
+                    "y": 5,
+                    "width": 24,
+                    "height": 6,
+                    "properties": {
+                        "metrics": [
+                            [ { "expression": "SELECT MAX(IPAddressCount) FROM \"${CloudWatchMetricNamespace}\" GROUP BY LoadBalancerArn", "label": "IPAddressCount", "id": "q1", "region": "${AWS::Region}", "period": 60 } ]
+                        ],
+                        "view": "timeSeries",
+                        "stacked": false,
+                        "region": "${AWS::Region}",
+                        "period": 60,
+                        "stat": "Average",
+                        "title": "ALB IP Address Count Over Time",
+                        "yAxis": {
+                            "left": {
+                                "showUnits": false,
+                                "label": "Count"
+                            },
+                            "right": {
+                                "showUnits": false
+                            }
+                        }
+                    }
+                },
+                {
+                    "type": "metric",
+                    "x": 0,
+                    "y": 11,
+                    "width": 24,
+                    "height": 6,
+                    "properties": {
+                        "metrics": [
+                            [ { "expression": "SELECT MAX(ForeignIPDetected) FROM SCHEMA(\"${CloudWatchMetricNamespace}\", LoadBalancerArn) GROUP BY LoadBalancerArn", "label": "ForeignIPDetected", "id": "q1", "region": "${AWS::Region}", "period": 60, "stat": "Maximum" } ]
+                        ],
+                        "view": "timeSeries",
+                        "stacked": false,
+                        "region": "${AWS::Region}",
+                        "title": "Foreign IP Detection",
+                        "period": 60,
+                        "stat": "Maximum",
+                        "yAxis": {
+                            "left": {
+                                "showUnits": false,
+                                "label": "Count"
+                            },
+                            "right": {
+                                "showUnits": false
+                            }
+                        },
+                        "annotations": {
+                            "horizontal": [
+                                {
+                                    "color": "#d62728",
+                                    "label": "Alarm Threshold",
+                                    "value": 1
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "type": "log",
+                    "x": 0,
+                    "y": 17,
+                    "width": 24,
+                    "height": 6,
+                    "properties": {
+                        "query": "SOURCE '/aws/lambda/ALB-IPAM-Monitoring'\n| fields @timestamp, @message\n| filter @message like /Foreign IPs detected for ALB/ or @message like /Failure during processing all/ or @message like /Partial Success during load balancer processing/ or @message like /are within expected CIDR blocks/\n| sort @timestamp desc\n| limit 100",
+                        "region": "${AWS::Region}",
+                        "title": "Recent Foreign IP Detection Logs",
+                        "view": "table"
+                    }
+                }
+            ]
+        }
+
+Outputs:
+  SolutionVersion:
+    Description: 'Version of the ALB IPAM Monitoring solution'
+    Value: !FindInMap [Solution, Info, Version]
