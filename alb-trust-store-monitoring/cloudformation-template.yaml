@@ -1,0 +1,715 @@
+# ALB mTLS Trust Store Monitoring Solution
+# Version: Check the Mappings section under Solution,Info,Version for the version number.
+
+Description: 'ALB mTLS Trust Store Monitoring Solution - This CloudFormation template deploys a solution that monitors Application Load Balancer (ALB) mTLS trust store usage. It automatically discovers all trust stores in your AWS account and region, retrieves certificate and revocation count information, calculates the bundle subject size, and publishes custom CloudWatch metrics and Alarms enabling proactive monitoring of trust store capacity and usage trends.'
+
+# Disclaimer:
+# Samples are provided as is, and are not intended to be used in production without review / editing to meet your organizational compliance needs.
+
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Licensed under the Apache License Version 2.0 (the "License"). You may not use this file except in compliance with the License. A copy of the License is located at
+# http://www.apache.org/licenses/
+# or in the "LICENSE" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and limitations under the License.
+
+AWSTemplateFormatVersion: '2010-09-09'
+
+Mappings:
+  Solution:
+    Info:
+      Version: '1.1'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Dependencies"
+        Parameters:
+          - CryptographyLayerArn
+      - Label:
+          default: "Logging Configuration"
+        Parameters:
+          - EnableDebugLogging
+          - LogRetentionDays
+      - Label:
+          default: "Monitoring Configuration"
+        Parameters:
+          - CloudWatchMetricNamespace
+          - CaCertificatesThresholdPercentage
+          - RevokedEntriesThresholdPercentage
+          - SubjectSizeThresholdPercentage
+      - Label:
+          default: "Notifications"
+        Parameters:
+          - SNSTopicArn
+    ParameterLabels:
+      CryptographyLayerArn:
+        default: "Cryptography Lambda Layer ARN"
+      EnableDebugLogging:
+        default: "Enable Debug Logging"
+      LogRetentionDays:
+        default: "Log Retention Period (Days)"
+      CloudWatchMetricNamespace:
+        default: "CloudWatch Metric Namespace"
+      CaCertificatesThresholdPercentage:
+        default: "CA Certificates Alarm Threshold (%)"
+      RevokedEntriesThresholdPercentage:
+        default: "Revoked Entries Alarm Threshold (%)"
+      SubjectSizeThresholdPercentage:
+        default: "Subject Size Alarm Threshold (%)"
+      SNSTopicArn:
+        default: "SNS Topic ARN (Optional)"
+
+Conditions:
+  EnableSNSNotifications: !Not [!Equals [!Ref SNSTopicArn, '']]
+
+Parameters:
+
+  CryptographyLayerArn:
+    Type: String
+    Description: 'ARN of the Lambda Layer containing the Python cryptography library. Run create-lambda-layer.sh from CloudShell to create this layer.'
+
+  SNSTopicArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^(arn:aws:sns:[a-z0-9-]+:[0-9]{12}:[a-zA-Z0-9_-]+)?$'
+    Description: 'Optional SNS Topic ARN for Alarm notifications (leave empty to disable notifications). Format: arn:aws:sns:region:account-id:topic-name'
+    ConstraintDescription: 'Must be a valid SNS topic ARN or empty string'
+  
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+    Description: 'CloudWatch Log Group retention period in days.'
+  
+  CloudWatchMetricNamespace:
+    Type: String
+    Default: 'ALB/TrustStore-Monitoring'
+    Description: 'CloudWatch metric namespace for custom metrics.'
+  
+  CaCertificatesThresholdPercentage:
+    Type: Number
+    Default: 90
+    MinValue: 1
+    MaxValue: 100
+    Description: 'Percentage of Service Quota limit for "CA certificates per trust store" alarm threshold'
+  
+  RevokedEntriesThresholdPercentage:
+    Type: Number
+    Default: 90
+    MinValue: 1
+    MaxValue: 100
+    Description: 'Percentage of Service Quota limit for "Revocation entries per trust store" alarm threshold'
+  
+  SubjectSizeThresholdPercentage:
+    Type: Number
+    Default: 90
+    MinValue: 1
+    MaxValue: 100
+    Description: 'Percentage of Service Quota limit for "CA certificates subject size per trust store" alarm threshold'
+
+  EnableDebugLogging:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Enable debug logging in Lambda function. Verbose, use for troubleshooting only.'
+
+Resources:
+  # Managed Policy for ALB Trust Store Monitoring
+  ALBTrustStoreMonitoringPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub 'ALBTrustStoreMonitoringPolicy-${AWS::Region}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - elasticloadbalancing:DescribeTrustStores
+              - elasticloadbalancing:GetTrustStoreCaCertificatesBundle
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - cloudwatch:PutMetricData
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - servicequotas:GetServiceQuota
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - cloudwatch:PutMetricAlarm
+            Resource: !Sub 'arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:ALB-TrustStore-Monitoring-*'
+          - !If
+            - EnableSNSNotifications
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref SNSTopicArn
+            - !Ref 'AWS::NoValue'
+
+  # IAM Role for Lambda Function
+  ALBTrustStoreMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Ref ALBTrustStoreMonitoringPolicy
+
+  # CloudWatch Log Group for Lambda Function
+  ALBTrustStoreMonitoringLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: '/aws/lambda/ALB-TrustStore-Monitoring'
+      RetentionInDays: !Ref LogRetentionDays
+
+  # Lambda Function
+  ALBTrustStoreMonitoringFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ALBTrustStoreMonitoringLogGroup
+    Properties:
+      FunctionName: 'ALB-TrustStore-Monitoring'
+      Description: !Sub 
+        - 'ALB mTLS Trust Store Monitoring Lambda Function - Version ${Version}'
+        - Version: !FindInMap [Solution, Info, Version]
+      Runtime: python3.13
+      Handler: index.lambda_handler
+      Role: !GetAtt ALBTrustStoreMonitoringRole.Arn
+      ReservedConcurrentExecutions: 1
+      Timeout: 60
+      MemorySize: 256
+      EphemeralStorage:
+        Size: 512
+      Layers:
+        - !Ref CryptographyLayerArn
+      LoggingConfig:
+        LogGroup: '/aws/lambda/ALB-TrustStore-Monitoring'
+      Environment:
+        Variables:
+          DEBUG_LOGGING: !Ref EnableDebugLogging
+          CLOUDWATCH_NAMESPACE: !Ref CloudWatchMetricNamespace
+          CA_CERTIFICATES_THRESHOLD_PERCENTAGE: !Ref CaCertificatesThresholdPercentage
+          REVOKED_ENTRIES_THRESHOLD_PERCENTAGE: !Ref RevokedEntriesThresholdPercentage
+          SUBJECT_SIZE_THRESHOLD_PERCENTAGE: !Ref SubjectSizeThresholdPercentage
+          SNS_TOPIC_ARN: !If [EnableSNSNotifications, !Ref SNSTopicArn, '']
+      Code:
+        ZipFile: |
+            """
+            ALB mTLS Trust Store Monitoring Lambda Function
+            """
+
+            import boto3
+            from botocore.config import Config
+            import os
+            import logging
+            import urllib.request
+            from datetime import datetime
+            from cryptography import x509
+            from cryptography.hazmat.backends import default_backend
+
+            # Configure logging
+            logger = logging.getLogger()
+            logger.setLevel(logging.DEBUG if os.environ.get('DEBUG_LOGGING', 'false').lower() == 'true' else logging.INFO)
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(levelname)s: %(message)s')
+            handler.setFormatter(formatter)
+            logger.handlers.clear()
+            logger.addHandler(handler)
+
+            # Service Quota codes for ELB trust store limits
+            QUOTA_CODES = {
+                'NumberOfCaCertificates': 'L-43FE5A42',
+                'TotalRevokedEntries': 'L-37E1617B',
+                'TotalSubjectSize': 'L-F31E307C'
+            }
+            
+            THRESHOLD_PERCENTAGES = {
+                'NumberOfCaCertificates': 'CA_CERTIFICATES_THRESHOLD_PERCENTAGE',
+                'TotalRevokedEntries': 'REVOKED_ENTRIES_THRESHOLD_PERCENTAGE',
+                'TotalSubjectSize': 'SUBJECT_SIZE_THRESHOLD_PERCENTAGE'
+            }
+
+            def get_service_quota_value(servicequotas_client, quota_code):
+                """
+                Get current Service Quota value
+                Args:
+                    servicequotas_client: The Service Quotas client
+                    quota_code (str): The quota code
+                Returns:
+                    float: The quota value
+                """
+                try:
+                    response = servicequotas_client.get_service_quota(
+                        ServiceCode='elasticloadbalancing',
+                        QuotaCode=quota_code
+                    )
+                    return response['Quota']['Value']
+                except Exception as e:
+                    logger.error(f"Failed to get quota {quota_code}: {e}")
+                    raise
+
+            def update_alarm_threshold(cloudwatch_client, metric_name, threshold):
+                """
+                Update CloudWatch Alarm threshold
+                Args:
+                    cloudwatch_client: The CloudWatch client
+                    metric_name (str): The metric name
+                    threshold (int): The new threshold value
+                """
+                region = os.environ.get('AWS_REGION')
+                alarm_name_map = {
+                    'NumberOfCaCertificates': f'ALB-TrustStore-Monitoring-CaCertificates-{region}',
+                    'TotalRevokedEntries': f'ALB-TrustStore-Monitoring-RevokedEntries-{region}',
+                    'TotalSubjectSize': f'ALB-TrustStore-Monitoring-SubjectSize-{region}'
+                }
+                
+                alarm_name = alarm_name_map.get(metric_name)
+                if not alarm_name:
+                    logger.error(f"Unknown metric name: {metric_name}")
+                    return
+                
+                try:
+                    sns_topic_arn = os.environ.get('SNS_TOPIC_ARN', '')
+                    alarm_actions = [sns_topic_arn] if sns_topic_arn else []
+                    
+                    cloudwatch_client.put_metric_alarm(
+                        AlarmName=alarm_name,
+                        AlarmDescription=f'Alarm triggered when {metric_name} exceeds threshold ({threshold})',
+                        Metrics=[
+                            {
+                                'Id': 'm1',
+                                'Expression': f'SELECT MAX({metric_name}) FROM SCHEMA("{os.environ.get("CLOUDWATCH_NAMESPACE")}", TrustStoreArn)',
+                                'Label': f'Max {metric_name} Across All Trust Stores',
+                                'Period': 3600,
+                                'ReturnData': True
+                            }
+                        ],
+                        EvaluationPeriods=1,
+                        DatapointsToAlarm=1,
+                        Threshold=threshold,
+                        ComparisonOperator='GreaterThanThreshold',
+                        AlarmActions=alarm_actions,
+                        OKActions=alarm_actions,
+                        TreatMissingData='notBreaching'
+                    )
+                    logger.info(f"Updated alarm {alarm_name} with threshold {threshold}")
+                except Exception as e:
+                    logger.error(f"Failed to update alarm {alarm_name}: {e}")
+
+            def update_alarm_thresholds():
+                """
+                Query Service Quotas and update CloudWatch Alarm thresholds
+                """
+                try:
+                    retry_config = Config(retries={'max_attempts': 10, 'mode': 'adaptive'})
+                    servicequotas = boto3.client('service-quotas', config=retry_config)
+                    cloudwatch = boto3.client('cloudwatch', config=retry_config)
+                    
+                    for metric_name, quota_code in QUOTA_CODES.items():
+                        percentage_env_var = THRESHOLD_PERCENTAGES[metric_name]
+                        threshold_percentage = float(os.environ.get(percentage_env_var, 90)) / 100
+                        quota_value = get_service_quota_value(servicequotas, quota_code)
+                        threshold = int(quota_value * threshold_percentage)
+                        update_alarm_threshold(cloudwatch, metric_name, threshold)
+                        
+                except Exception as e:
+                    logger.error(f"Failed to update alarm thresholds: {e}")
+                    raise
+
+            def calculate_cabundle_size(pem_data):
+                """
+                Calculate total subject size from CA bundle
+                Args:
+                    pem_data (bytes): PEM-encoded certificate bundle
+                Returns:
+                    int: total subject size
+                """
+                total_size = 0
+                
+                for cert_pem in pem_data.split(b'-----BEGIN CERTIFICATE-----'):
+                    if not cert_pem.strip():
+                        continue
+                    cert_pem = b'-----BEGIN CERTIFICATE-----' + cert_pem
+                    try:
+                        cert = x509.load_pem_x509_certificate(cert_pem, default_backend())
+                        subject_der = cert.subject.public_bytes(default_backend())
+                        total_size += len(subject_der) + 2
+                    except:
+                        pass
+                
+                return total_size
+
+            def publish_metric(cloudwatch_client, trust_store_arn, metric_value, metric_name, timestamp):
+                """
+                Publish a metric to CloudWatch for the Trust Store
+                Args:
+                    cloudwatch_client: The CloudWatch client
+                    trust_store_arn (str): The ARN of the trust store
+                    metric_value (int): The metric value to publish
+                    metric_name (str): The name of the metric
+                    timestamp (datetime): The timestamp to use for the metric
+                Returns:
+                    bool: True if successful, False otherwise
+                """
+                try:
+                    cloudwatch_client.put_metric_data(
+                        Namespace=os.environ.get('CLOUDWATCH_NAMESPACE'),
+                        MetricData=[
+                            {
+                                'MetricName': metric_name,
+                                'Dimensions': [
+                                    {
+                                        'Name': 'TrustStoreArn',
+                                        'Value': trust_store_arn
+                                    }
+                                ],
+                                'Value': metric_value,
+                                'Unit': 'Count',
+                                'Timestamp': timestamp
+                            }
+                        ]
+                    )
+                    logger.debug(f"Successfully published {metric_name} metric: {metric_value} for Trust Store: {trust_store_arn}")
+                    return True
+                except Exception as e:
+                    logger.error(f"Failed to publish {metric_name} metric: {e}")
+                    return False
+
+            def process_trust_store(trust_store, elbv2_client, cloudwatch_client, execution_timestamp):
+                """
+                Process a single trust store and publish metrics
+                Args:
+                    trust_store (dict): Trust store dictionary from describe_trust_stores response
+                    elbv2_client: The ELBv2 client
+                    cloudwatch_client: The CloudWatch client
+                    execution_timestamp (datetime): Timestamp to use for metric publication
+                Returns:
+                    bool: True if successful, False if failed
+                """
+                trust_store_arn = trust_store['TrustStoreArn']
+                number_of_ca_certificates = trust_store.get('NumberOfCaCertificates', 0)
+                total_revoked_entries = trust_store.get('TotalRevokedEntries', 0)
+                
+                # Publish NumberOfCaCertificates and TotalRevokedEntries metrics
+                publish_metric(cloudwatch_client, trust_store_arn, number_of_ca_certificates, 'NumberOfCaCertificates', execution_timestamp)
+                publish_metric(cloudwatch_client, trust_store_arn, total_revoked_entries, 'TotalRevokedEntries', execution_timestamp)
+                
+                # Get CA certificates bundle
+                try:
+                    response = elbv2_client.get_trust_store_ca_certificates_bundle(TrustStoreArn=trust_store_arn)
+                    location = response.get('Location')
+                    
+                    if not location:
+                        logger.warning(f"No bundle location for Trust Store: {trust_store_arn}")
+                        return False
+                    
+                    # Download bundle from pre-signed S3 URI
+                    with urllib.request.urlopen(location) as response:
+                        pem_data = response.read()
+                    
+                    # Calculate total subject size
+                    total_subject_size = calculate_cabundle_size(pem_data)
+                    
+                    logger.info(f"Processing Trust Store: {trust_store_arn}, CA Certificates: {number_of_ca_certificates}, Revoked Entries: {total_revoked_entries}, TotalSubjectSize: {total_subject_size}")
+                    
+                    # Publish TotalSubjectSize metric
+                    return publish_metric(cloudwatch_client, trust_store_arn, total_subject_size, 'TotalSubjectSize', execution_timestamp)
+                    
+                except Exception as e:
+                    logger.error(f"Failed to process bundle for Trust Store {trust_store_arn}: {e}")
+                    return False
+
+            def lambda_handler(event, context):
+                execution_timestamp = datetime.utcnow()
+                
+                retry_config = Config(
+                    retries={
+                        'max_attempts': 10,
+                        'mode': 'adaptive'
+                    }
+                )
+                
+                elbv2 = boto3.client('elbv2', config=retry_config)
+                cloudwatch = boto3.client('cloudwatch', config=retry_config)
+                logger.debug(f'boto3 version: {boto3.__version__}')
+                
+                try:
+                    # Update alarm thresholds based on current Service Quotas
+                    update_alarm_thresholds()
+                    
+                    # Get all trust stores
+                    response = elbv2.describe_trust_stores()
+                    trust_stores = response.get('TrustStores', [])
+                    
+                    if not trust_stores:
+                        return {
+                            'statusCode': 200,
+                            'body': "No trust stores found"
+                        }
+                    
+                    # Process each trust store
+                    success_count = 0
+                    failure_count = 0
+                    failed_trust_stores = []
+                    
+                    for trust_store in trust_stores:
+                        if process_trust_store(trust_store, elbv2, cloudwatch, execution_timestamp):
+                            success_count += 1
+                        else:
+                            failure_count += 1
+                            failed_trust_stores.append(trust_store['TrustStoreArn'])
+                    
+                    # Return appropriate status based on results
+                    if failure_count == 0:
+                        message = f"Succeeded in processing all {success_count} trust stores."
+                        logger.info(message)
+                        return {
+                            'statusCode': 200,
+                            'body': message
+                        }
+                    elif success_count == 0:
+                        message = f"Failure during processing all {failure_count} trust stores."
+                        logger.warning(f"{message}. Failed trust stores: {failed_trust_stores}")
+                        return {
+                            'statusCode': 500,
+                            'body': message
+                        }
+                    else:
+                        message = f"Partial Success during trust store processing: {success_count} succeeded, {failure_count} failed"
+                        logger.warning(f"{message}. Failed trust stores: {failed_trust_stores}")
+                        return {
+                            'statusCode': 207,
+                            'body': message
+                        }
+                        
+                except Exception as e:
+                    logger.error(f"Lambda execution failed: {e}")
+                    return {
+                        'statusCode': 500,
+                        'body': f"Lambda execution failed: {str(e)}"
+                    }
+
+  # EventBridge Rule for Lambda Scheduling
+  ALBTrustStoreMonitoringScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: 'ALB-TrustStore-Monitoring-Schedule'
+      Description: 'Schedule for ALB Trust Store monitoring Lambda function'
+      ScheduleExpression: 'cron(5 * * * ? *)'
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt ALBTrustStoreMonitoringFunction.Arn
+          Id: 'ALBTrustStoreMonitoringTarget'
+
+  # Permission for EventBridge to invoke Lambda
+  ALBTrustStoreMonitoringLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ALBTrustStoreMonitoringFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ALBTrustStoreMonitoringScheduleRule.Arn
+
+  # CloudWatch Alarm for NumberOfCaCertificates
+  NumberOfCaCertificatesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'ALB-TrustStore-Monitoring-CaCertificates-${AWS::Region}'
+      AlarmDescription: !Sub 'Alarm triggered when CA certificates count exceeds ${CaCertificatesThresholdPercentage}% of Service Quota limit (threshold updated dynamically by Lambda)'
+      Metrics:
+        - Id: 'm1'
+          Expression: !Sub 'SELECT MAX(NumberOfCaCertificates) FROM SCHEMA("${CloudWatchMetricNamespace}", TrustStoreArn)'
+          Label: 'Max NumberOfCaCertificates Across All Trust Stores'
+          Period: 3600
+          ReturnData: true
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 500
+      ComparisonOperator: 'GreaterThanThreshold'
+      AlarmActions: !If
+        - EnableSNSNotifications
+        - [!Ref SNSTopicArn]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - EnableSNSNotifications
+        - [!Ref SNSTopicArn]
+        - !Ref 'AWS::NoValue'
+      TreatMissingData: 'notBreaching'
+
+  # CloudWatch Alarm for TotalRevokedEntries
+  TotalRevokedEntriesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'ALB-TrustStore-Monitoring-RevokedEntries-${AWS::Region}'
+      AlarmDescription: !Sub 'Alarm triggered when revoked entries count exceeds ${RevokedEntriesThresholdPercentage}% of Service Quota limit (threshold updated dynamically by Lambda)'
+      Metrics:
+        - Id: 'm1'
+          Expression: !Sub 'SELECT MAX(TotalRevokedEntries) FROM SCHEMA("${CloudWatchMetricNamespace}", TrustStoreArn)'
+          Label: 'Max TotalRevokedEntries Across All Trust Stores'
+          Period: 3600
+          ReturnData: true
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1000000
+      ComparisonOperator: 'GreaterThanThreshold'
+      AlarmActions: !If
+        - EnableSNSNotifications
+        - [!Ref SNSTopicArn]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - EnableSNSNotifications
+        - [!Ref SNSTopicArn]
+        - !Ref 'AWS::NoValue'
+      TreatMissingData: 'notBreaching'
+
+  # CloudWatch Alarm for TotalSubjectSize
+  TotalSubjectSizeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'ALB-TrustStore-Monitoring-SubjectSize-${AWS::Region}'
+      AlarmDescription: !Sub 'Alarm triggered when total subject size exceeds ${SubjectSizeThresholdPercentage}% of Service Quota limit (threshold updated dynamically by Lambda)'
+      Metrics:
+        - Id: 'm1'
+          Expression: !Sub 'SELECT MAX(TotalSubjectSize) FROM SCHEMA("${CloudWatchMetricNamespace}", TrustStoreArn)'
+          Label: 'Max TotalSubjectSize Across All Trust Stores'
+          Period: 3600
+          ReturnData: true
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 20000
+      ComparisonOperator: 'GreaterThanThreshold'
+      AlarmActions: !If
+        - EnableSNSNotifications
+        - [!Ref SNSTopicArn]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - EnableSNSNotifications
+        - [!Ref SNSTopicArn]
+        - !Ref 'AWS::NoValue'
+      TreatMissingData: 'notBreaching'
+
+  # CloudWatch Dashboard
+  ALBTrustStoreMonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub 'ALB-TrustStore-Monitoring-${AWS::Region}'
+      DashboardBody: !Sub |
+        {
+            "widgets": [
+                {
+                    "type": "text",
+                    "x": 0,
+                    "y": 0,
+                    "width": 12,
+                    "height": 4,
+                    "properties": {
+                        "markdown": "# ALB mTLS Trust Store Monitoring\n\nThis dashboard monitors Application Load Balancer (ALB) mTLS trust store usage including CA certificate counts, revoked entries, and total subject size to help track capacity and usage trends.\n\n[Trust Store Documentation](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/mutual-authentication.html)"
+                    }
+                },
+                {
+                    "type": "alarm",
+                    "x": 12,
+                    "y": 0,
+                    "width": 12,
+                    "height": 4,
+                    "properties": {
+                        "title": "Alarms",
+                        "alarms": [
+                            "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:ALB-TrustStore-Monitoring-CaCertificates-${AWS::Region}",
+                            "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:ALB-TrustStore-Monitoring-RevokedEntries-${AWS::Region}",
+                            "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:ALB-TrustStore-Monitoring-SubjectSize-${AWS::Region}"
+                        ]
+                    }
+                },
+                {
+                    "type": "metric",
+                    "x": 0,
+                    "y": 3,
+                    "width": 12,
+                    "height": 6,
+                    "properties": {
+                        "metrics": [
+                            [ { "expression": "SELECT MAX(NumberOfCaCertificates) FROM \"${CloudWatchMetricNamespace}\" GROUP BY TrustStoreArn", "label": "NumberOfCaCertificates", "id": "q1", "region": "${AWS::Region}" } ]
+                        ],
+                        "view": "timeSeries",
+                        "stacked": false,
+                        "region": "${AWS::Region}",
+                        "title": "CA Certificates Count",
+                        "period": 3600,
+                        "stat": "Maximum",
+                        "yAxis": {
+                            "left": {
+                                "showUnits": false,
+                                "label": "Count"
+                            }
+                        },
+                        "liveData": true
+                    }
+                },
+                {
+                    "type": "metric",
+                    "x": 12,
+                    "y": 3,
+                    "width": 12,
+                    "height": 6,
+                    "properties": {
+                        "metrics": [
+                            [ { "expression": "SELECT MAX(TotalRevokedEntries) FROM \"${CloudWatchMetricNamespace}\" GROUP BY TrustStoreArn", "label": "TotalRevokedEntries", "id": "q1", "region": "${AWS::Region}" } ]
+                        ],
+                        "view": "timeSeries",
+                        "stacked": false,
+                        "region": "${AWS::Region}",
+                        "title": "Total Revoked Entries",
+                        "period": 3600,
+                        "stat": "Maximum",
+                        "yAxis": {
+                            "left": {
+                                "showUnits": false,
+                                "label": "Count"
+                            }
+                        },
+                        "liveData": true
+                    }
+                },
+                {
+                    "type": "metric",
+                    "x": 0,
+                    "y": 9,
+                    "width": 12,
+                    "height": 6,
+                    "properties": {
+                        "metrics": [
+                            [ { "expression": "SELECT MAX(TotalSubjectSize) FROM \"${CloudWatchMetricNamespace}\" GROUP BY TrustStoreArn", "label": "TotalSubjectSize", "id": "q1", "region": "${AWS::Region}" } ]
+                        ],
+                        "view": "timeSeries",
+                        "stacked": false,
+                        "region": "${AWS::Region}",
+                        "title": "Total Subject Size (Bytes)",
+                        "period": 3600,
+                        "stat": "Maximum",
+                        "yAxis": {
+                            "left": {
+                                "showUnits": false,
+                                "label": "Bytes"
+                            }
+                        },
+                        "liveData": true
+                    }
+                }
+            ]
+        }
+
+Outputs:
+  SolutionVersion:
+    Description: 'Version of the ALB Trust Store Monitoring solution'
+    Value: !FindInMap [Solution, Info, Version]
+  
+  DashboardURL:
+    Description: 'CloudWatch Dashboard URL'
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=ALB-TrustStore-Monitoring-${AWS::Region}'
