@@ -165,6 +165,7 @@ Resources:
   # CloudWatch Log Group for Lambda Function
   ALBTrustStoreMonitoringLogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
     Properties:
       LogGroupName: '/aws/lambda/ALB-TrustStore-Monitoring'
       RetentionInDays: !Ref LogRetentionDays
@@ -209,7 +210,7 @@ Resources:
             import os
             import logging
             import urllib.request
-            from datetime import datetime
+            from datetime import datetime, timezone
             from cryptography import x509
             from cryptography.hazmat.backends import default_backend
 
@@ -338,7 +339,7 @@ Resources:
                     cert_pem = b'-----BEGIN CERTIFICATE-----' + cert_pem
                     try:
                         cert = x509.load_pem_x509_certificate(cert_pem, default_backend())
-                        subject_der = cert.subject.public_bytes(default_backend())
+                        subject_der = cert.subject.public_bytes()
                         total_size += len(subject_der) + 2
                     except:
                         pass
@@ -426,7 +427,7 @@ Resources:
                     return False
 
             def lambda_handler(event, context):
-                execution_timestamp = datetime.utcnow()
+                execution_timestamp = datetime.now(timezone.utc)
                 
                 retry_config = Config(
                     retries={
@@ -443,9 +444,11 @@ Resources:
                     # Update alarm thresholds based on current Service Quotas
                     update_alarm_thresholds()
                     
-                    # Get all trust stores
-                    response = elbv2.describe_trust_stores()
-                    trust_stores = response.get('TrustStores', [])
+                    # Get all trust stores (paginated)
+                    trust_stores = []
+                    paginator = elbv2.get_paginator('describe_trust_stores')
+                    for page in paginator.paginate():
+                        trust_stores.extend(page.get('TrustStores', []))
                     
                     if not trust_stores:
                         return {
@@ -517,6 +520,8 @@ Resources:
       SourceArn: !GetAtt ALBTrustStoreMonitoringScheduleRule.Arn
 
   # CloudWatch Alarm for NumberOfCaCertificates
+  # Initial Threshold is a safe default; the Lambda dynamically updates it
+  # based on the Service Quota value and the configured threshold percentage.
   NumberOfCaCertificatesAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -530,7 +535,7 @@ Resources:
           ReturnData: true
       EvaluationPeriods: 1
       DatapointsToAlarm: 1
-      Threshold: 500
+      Threshold: 500 # Safe placeholder until Lambda updates it based on Service Quota and configured threshold percentage
       ComparisonOperator: 'GreaterThanThreshold'
       AlarmActions: !If
         - EnableSNSNotifications
@@ -543,6 +548,8 @@ Resources:
       TreatMissingData: 'notBreaching'
 
   # CloudWatch Alarm for TotalRevokedEntries
+  # Initial Threshold is a safe default; the Lambda dynamically updates it
+  # based on the Service Quota value and the configured threshold percentage.
   TotalRevokedEntriesAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -556,7 +563,7 @@ Resources:
           ReturnData: true
       EvaluationPeriods: 1
       DatapointsToAlarm: 1
-      Threshold: 1000000
+      Threshold: 1000000 # Safe placeholder until Lambda updates it based on Service Quota and configured threshold percentage
       ComparisonOperator: 'GreaterThanThreshold'
       AlarmActions: !If
         - EnableSNSNotifications
@@ -569,6 +576,8 @@ Resources:
       TreatMissingData: 'notBreaching'
 
   # CloudWatch Alarm for TotalSubjectSize
+  # Initial Threshold is a safe default; the Lambda dynamically updates it
+  # based on the Service Quota value and the configured threshold percentage.
   TotalSubjectSizeAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -582,7 +591,7 @@ Resources:
           ReturnData: true
       EvaluationPeriods: 1
       DatapointsToAlarm: 1
-      Threshold: 20000
+      Threshold: 20000 # Safe placeholder until Lambda updates it based on Service Quota and configured threshold percentage
       ComparisonOperator: 'GreaterThanThreshold'
       AlarmActions: !If
         - EnableSNSNotifications
