@@ -14,6 +14,7 @@ Metadata:
         Parameters:
           - TrafficMirroringTargetSubnets
           - TrafficMirroringTargetInstanceType
+          - TargetInstancesPerSubnet
           - KeyPairName
       - Label:
           default: "Pcap Capture Settings — Files are rotated and uploaded to S3 when EITHER the time limit (-G) OR size limit (-C) is reached, whichever comes first. Use -s to limit capture to packet headers only and reduce file size."
@@ -34,6 +35,8 @@ Metadata:
         default: "Target Subnets (same VPC as ALB/CLB)"
       TrafficMirroringTargetInstanceType:
         default: "EC2 Instance Type"
+      TargetInstancesPerSubnet:
+        default: "Instances Per Subnet (max mirror sources = this × 10)"
       KeyPairName:
         default: "SSH Key Pair (optional)"
       PcapRotateSeconds:
@@ -72,6 +75,12 @@ Parameters:
       - c5n.large
       - c5n.xlarge
       - c5n.2xlarge
+  TargetInstancesPerSubnet:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 12
+    Description: "Number of TMT EC2 instances per subnet. Each instance supports up to 10 mirror sources. Default 1 (supports up to 10 ENIs per AZ)."
   ExistingBucketArn:
     Type: String
     Default: ""
@@ -404,6 +413,7 @@ Resources:
             - !Ref PcapBucket
             - !Select [5, !Split [":", !Ref ExistingBucketArn]]
           SUBNET_MAP: !GetAtt ParseELB.SubnetMapping
+          INSTANCES_PER_SUBNET: !Ref TargetInstancesPerSubnet
           ALB_NAME: !GetAtt ParseELB.ELBName
           TAG_PREFIX: !GetAtt ParseELB.TagPrefix
           STACK_NAME: !Ref AWS::StackName
@@ -477,7 +487,7 @@ Resources:
           Requires=vxlan-setup.service
           Before=pcap-uploader.service
           [Service]
-          ExecStart=/usr/sbin/tcpdump -i vxlan1 -s {snap_len} -w /tms/${{ALB_NAME}}_${{AZ}}_capture_%%Y%%m%%d_%%H%%M%%S.pcap -G {rotate_sec} -C {max_size_mb} -Z root
+          ExecStart=/usr/sbin/tcpdump -i vxlan1 -s {snap_len} -w /tms/${{ALB_NAME}}_${{AZ}}_${{LOCAL_IP}}_capture_%%Y%%m%%d_%%H%%M%%S.pcap -G {rotate_sec} -C {max_size_mb} -Z root
           Restart=always
           RestartSec=3
           [Install]
@@ -588,7 +598,9 @@ Resources:
                       ]}]
                   )
                   tid = target['TrafficMirrorTarget']['TrafficMirrorTargetId']
-                  az_target_map[az] = tid
+                  if az not in az_target_map:
+                      az_target_map[az] = []
+                  az_target_map[az].append(tid)
                   logger.info(f'Created Mirror Target {tid} for AZ {az}')
               return az_target_map
           
@@ -601,6 +613,7 @@ Resources:
           def create_TMT_ec2s(p, subnet_map) -> list:
               ami_info = ec2.describe_images(ImageIds=[os.environ['AMI_ID']])
               root_device = ami_info['Images'][0]['RootDeviceName']
+              instances_per_subnet = int(os.environ.get('INSTANCES_PER_SUBNET', '1'))
               instance_ids = []
               for az, subnet_id in subnet_map.items():
                   tags = [
@@ -613,7 +626,7 @@ Resources:
                   run_params = dict(
                       ImageId=os.environ['AMI_ID'],
                       InstanceType=os.environ['INSTANCE_TYPE'],
-                      MinCount=1, MaxCount=1,
+                      MinCount=instances_per_subnet, MaxCount=instances_per_subnet,
                       NetworkInterfaces=[{
                           'DeviceIndex': 0,
                           'SubnetId': subnet_id,
@@ -627,10 +640,10 @@ Resources:
                   )
                   if os.environ.get('KEY_PAIR_NAME'):
                       run_params['KeyName'] = os.environ['KEY_PAIR_NAME']
-                  instance = ec2.run_instances(**run_params)
-                  iid = instance['Instances'][0]['InstanceId']
-                  instance_ids.append(iid)
-                  logger.info(f'Created EC2 {iid} in AZ {az}')
+                  result = ec2.run_instances(**run_params)
+                  iids = [i['InstanceId'] for i in result['Instances']]
+                  instance_ids.extend(iids)
+                  logger.info(f'Created {len(iids)} EC2 instances in AZ {az}: {iids}')
               return instance_ids
           
           
@@ -801,12 +814,12 @@ Resources:
           AZ_TARGET_MAP: !GetAtt TrafficMirrorResource.AZTargetMap
       Code:
         ZipFile: |
-          import boto3, json, os, logging, time
+          import boto3, json, os, logging, time, random
           logger = logging.getLogger()
           logger.setLevel(logging.INFO)
           ec2 = boto3.client('ec2')
 
-          def retry(max_attempts=3, interval=60):
+          def retry(max_attempts=3, interval=30, jitter=30):
               def decorator(func):
                   def wrapper(*args, **kwargs):
                       for attempt in range(max_attempts):
@@ -815,8 +828,9 @@ Resources:
                           except Exception as e:
                               if attempt == max_attempts - 1:
                                   raise
-                              logger.warning(f'{func.__name__} retry {attempt+1}/{max_attempts}: {e}')
-                              time.sleep(interval)
+                              wait = interval + random.uniform(0, jitter)
+                              logger.warning(f'{func.__name__} retry {attempt+1}/{max_attempts} (wait {wait:.1f}s): {e}')
+                              time.sleep(wait)
                   return wrapper
               return decorator
 
@@ -824,7 +838,6 @@ Resources:
               existing = ec2.describe_traffic_mirror_sessions(Filters=[{'Name': 'network-interface-id', 'Values': [eni_id]}])
               return len(existing['TrafficMirrorSessions']) > 0
 
-          @retry(max_attempts=3, interval=60)
           def create_mirror_session(eni_id, target_id, tags):
               logger.info(f'Creating Mirror Session: source={eni_id}, target={target_id}')
               ec2.create_traffic_mirror_session(
@@ -837,30 +850,60 @@ Resources:
               logger.info(f'Mirror Session created for {eni_id}')
 
           def TMTSelector(az, az_target_map):
-              """Select best Mirror Target: same AZ preferred, otherwise least-loaded Target."""
-              # 1. Same AZ match
-              if az in az_target_map:
-                  logger.info(f'TMTSelector: same AZ match for {az}')
-                  return az_target_map[az]
-              # 2. Load balance: pick target with fewest sessions
-              all_target_ids = list(az_target_map.values())
-              sessions = ec2.describe_traffic_mirror_sessions(Filters=[{'Name': 'traffic-mirror-target-id', 'Values': all_target_ids}])
-              target_counts = {tid: 0 for tid in all_target_ids}
-              for s in sessions.get('TrafficMirrorSessions', []):
-                  tid = s['TrafficMirrorTargetId']
-                  if tid in target_counts:
-                      target_counts[tid] += 1
-              selected = min(target_counts, key=target_counts.get)
-              logger.info(f'TMTSelector: no target in {az}, selected {selected} (sessions: {target_counts})')
-              return selected
+              """Select best Mirror Target: same AZ least-loaded preferred, fallback to cross-AZ least-loaded. Max 10 sessions per target."""
+              MAX_SESSIONS_PER_TARGET = 10
+
+              def get_session_counts(target_ids):
+                  session_counts_per_target = {tid: 0 for tid in target_ids}
+                  pages = ec2.get_paginator('describe_traffic_mirror_sessions')
+                  for page in pages.paginate(Filters=[{'Name': 'traffic-mirror-target-id', 'Values': target_ids}]):
+                      for trafficMirrorSession in page.get('TrafficMirrorSessions', []):
+                          tid = trafficMirrorSession['TrafficMirrorTargetId']
+                          if tid in session_counts_per_target:
+                              session_counts_per_target[tid] += 1
+                  return session_counts_per_target
+
+              def select_least_loaded_target(target_ids):
+                  session_counts_per_target = get_session_counts(target_ids)
+                  selected = min(session_counts_per_target, key=session_counts_per_target.get)
+                  if session_counts_per_target[selected] < MAX_SESSIONS_PER_TARGET:
+                      return selected, session_counts_per_target
+                  return None, session_counts_per_target
+
+              # 1. Same AZ
+              same_az_targets = az_target_map.get(az, [])
+              if same_az_targets:
+                  selected, counts = select_least_loaded_target(same_az_targets)
+                  if selected:
+                      logger.info(f'TMTSelector: same AZ {az}, selected {selected} (sessions: {counts})')
+                      return selected
+                  logger.info(f'TMTSelector: all targets in {az} full ({counts}), falling back to cross-AZ')
+
+              # 2. Cross-AZ fallback
+              all_targets = [tid for tids in az_target_map.values() for tid in tids]
+              if all_targets:
+                  selected, counts = select_least_loaded_target(all_targets)
+                  if selected:
+                      logger.info(f'TMTSelector: cross-AZ selected {selected} (sessions: {counts})')
+                      return selected
+
+              raise Exception(f'All mirror targets are full ({MAX_SESSIONS_PER_TARGET} sessions each). Increase TargetInstancesPerSubnet or add more subnets.')
+
+          @retry(max_attempts=3, interval=60)
+          def select_and_create_session(eni_id, az, az_target_map, tags):
+              target_id = TMTSelector(az, az_target_map)
+              create_mirror_session(eni_id, target_id, tags)
 
           def handler(event, context):
               logger.info(f'Event: {json.dumps(event)}')
               # Parse ENI info
+          
+              # Invoked by EventBridge (CloudTrail CreateNetworkInterface event)
               if 'detail' in event:
                   detail = event['detail']
                   eni_id = detail['responseElements']['networkInterface']['networkInterfaceId']
                   az = detail['responseElements']['networkInterface']['availabilityZone']
+              # Invoked by InitialLambda (fire-and-forget invoke)
               else:
                   eni_id = event['eni_id']
                   az = event['availability_zone']
@@ -869,17 +912,16 @@ Resources:
                   logger.info(f'Mirror session already exists for {eni_id}, skipping')
                   return {'statusCode': 200, 'body': f'Already exists for {eni_id}'}
 
-              # Find target using TMTSelector
+              # Select target and create session (retry covers race condition)
               az_target_map = json.loads(os.environ['AZ_TARGET_MAP'])
-              target_id = TMTSelector(az, az_target_map)
-
               p = os.environ['TAG_PREFIX']
               tags = [
                   {'Key': 'Name', 'Value': f'TMS-{eni_id}'},
                   {'Key': f'{p}:cloudformation:stack-name', 'Value': os.environ['STACK_NAME']},
                   {'Key': f'{p}:SourceENI', 'Value': eni_id}
               ]
-              create_mirror_session(eni_id, target_id, tags)
+
+              select_and_create_session(eni_id, az, az_target_map, tags)
               return {'statusCode': 200, 'body': f'Mirror Session created for {eni_id}'}
 
   # ============================================================
