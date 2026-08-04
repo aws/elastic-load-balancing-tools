@@ -13,6 +13,7 @@ The types of ELB are:
 
 Elastic Load Balancing Tools is a collection of utilities, tutorials and code samples to help AWS customers with their use of Elastic Load Balancing.
 
+[Capturing Packets on Application & Classic Load Balancers Using Traffic Mirroring](alb-clb-traffic-mirroring/)<br />
 [Application Load Balancer IPAM Monitoring](alb-ipam-monitoring/)<br />
 [Classic Load Balancer to Application Load Balancer copy utility](application-load-balancer-copy-utility/) <br />
 [Classic Load Balancer to Network Load Balancer copy utility](network-load-balancer-copy-utility/) <br /> 
